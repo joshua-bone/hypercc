@@ -69,7 +69,6 @@ export type MazeWorld = {
   chipCellIds: number[]
   socketCellId: number
   exitCellId: number
-  gateEdgeIndexByCellId: number[]
   areaDag: AreaDag
 }
 

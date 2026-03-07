@@ -880,19 +880,11 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
       continue
     }
 
-    const gateEdgeIndexByCellId = new Array(cells.length).fill(-1)
-    progression.layout.areaDag.edges.forEach((edge, edgeIndex) => {
-      for (const gateCellId of edge.gateCellIds) {
-        gateEdgeIndexByCellId[gateCellId] = edgeIndex
-      }
-    })
-
     return {
       startCellId,
       chipCellIds: progression.layout.chipCellIds,
       socketCellId: progression.layout.socketCellId,
       exitCellId: progression.layout.exitCellId,
-      gateEdgeIndexByCellId,
       areaDag: progression.layout.areaDag,
       cells: cells.map((cell) => ({
         ...cell,

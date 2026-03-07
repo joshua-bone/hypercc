@@ -1,6 +1,6 @@
 import { cameraAngleForMove } from './camera'
 import { resolveCameraRelativeExits } from './directions'
-import { createEmptyKeyInventory, doorColorFromFeature, keyColorFromFeature, type GameState, type MoveIntent, type MazeWorld, type TickOutcome } from './model'
+import { createEmptyKeyInventory, doorColorFromFeature, keyColorFromFeature, type GameState, type MazeWorld, type MoveIntent, type TickOutcome } from './model'
 
 export function createInitialGameState(world: MazeWorld): GameState {
   return {
@@ -28,12 +28,6 @@ function canEnterCell(state: GameState, targetId: number): boolean {
   if (doorColor !== null && !state.openedDoorCellIds.has(targetId) && state.keyInventory[doorColor] < 1) return false
   if (cell.feature === 'socket' && !state.socketCleared && state.remainingChipCellIds.size > 0) return false
   return true
-}
-
-function gateCellIdsForCell(world: MazeWorld, cellId: number): number[] {
-  const edgeIndex = world.gateEdgeIndexByCellId[cellId] ?? -1
-  if (edgeIndex < 0) return [cellId]
-  return world.areaDag.edges[edgeIndex]?.gateCellIds ?? [cellId]
 }
 
 export function advanceGame(state: GameState, intent: MoveIntent): GameState {
@@ -68,9 +62,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
       const doorColor = doorColorFromFeature(targetCell.feature)
       if (doorColor !== null && !state.openedDoorCellIds.has(targetId)) {
         openedDoorCellIds = new Set(state.openedDoorCellIds)
-        for (const gateCellId of gateCellIdsForCell(state.world, targetId)) {
-          openedDoorCellIds.add(gateCellId)
-        }
+        openedDoorCellIds.add(targetId)
         if (doorColor !== 'green') {
           keyInventory = {
             ...keyInventory,
