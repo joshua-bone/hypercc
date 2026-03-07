@@ -24,7 +24,7 @@ const MIN_AREA_COUNT = 6
 const PATH_LAYOUT_ATTEMPTS = 10
 const LEAF_CANDIDATE_LIMIT = 16
 const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
-const DOOR_COLOR_SEQUENCE: KeyColor[] = ['blue', 'red', 'yellow', 'green']
+const DOOR_COLOR_SEQUENCE: KeyColor[] = ['blue', 'green', 'red', 'yellow']
 
 export const worldSizes = ['tiny', 'small', 'medium', 'large', 'huge'] as const
 export type WorldSize = (typeof worldSizes)[number]
