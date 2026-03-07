@@ -18,11 +18,11 @@ import {
 } from './model'
 
 const WORLD_ROTATION = -Math.PI / 4
-const WORLD_GENERATION_ATTEMPTS = 96
+const WORLD_GENERATION_ATTEMPTS = 120
 const GATE_CANDIDATE_LIMIT = 20
 const FRONTIER_SAMPLE_COUNT = 6
 const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
-const DOOR_COLOR_SEQUENCE: KeyColor[] = ['blue', 'red', 'green', 'yellow', 'green', 'red']
+const KEY_COLORS: KeyColor[] = ['blue', 'red', 'yellow', 'green']
 
 export const worldSizes = ['tiny', 'small', 'medium', 'large', 'huge'] as const
 export type WorldSize = (typeof worldSizes)[number]
@@ -39,37 +39,37 @@ const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
   tiny: {
     maxCells: 760,
     maxCenterRadius: 0.994,
-    roomCount: 4,
+    roomCount: 5,
     minRoomSize: 5,
     targetRoomSize: 8,
   },
   small: {
-    maxCells: 920,
+    maxCells: 980,
     maxCenterRadius: 0.995,
-    roomCount: 5,
+    roomCount: 6,
     minRoomSize: 6,
     targetRoomSize: 9,
   },
   medium: {
-    maxCells: 1600,
+    maxCells: 1700,
     maxCenterRadius: 0.996,
-    roomCount: 6,
+    roomCount: 8,
+    minRoomSize: 7,
+    targetRoomSize: 10,
+  },
+  large: {
+    maxCells: 2300,
+    maxCenterRadius: 0.997,
+    roomCount: 10,
     minRoomSize: 8,
     targetRoomSize: 11,
   },
-  large: {
-    maxCells: 2100,
-    maxCenterRadius: 0.997,
-    roomCount: 7,
-    minRoomSize: 10,
-    targetRoomSize: 13,
-  },
   huge: {
-    maxCells: 2800,
+    maxCells: 3000,
     maxCenterRadius: 0.998,
-    roomCount: 8,
-    minRoomSize: 12,
-    targetRoomSize: 15,
+    roomCount: 12,
+    minRoomSize: 9,
+    targetRoomSize: 12,
   },
 }
 
@@ -105,10 +105,32 @@ type AreaEdgePlan = {
   color: KeyColor | null
 }
 
+type GateCandidate = {
+  gateCellId: number
+  anchorCellId: number
+  score: number
+}
+
+type PlannedGate = {
+  fromAreaId: number
+  toAreaId: number
+  gate: 'door' | 'socket'
+  color: KeyColor | null
+}
+
+type RoomGraphPlan = {
+  parentAreaIdByRoomId: Array<number | null>
+  depthByRoomId: number[]
+  childAreaIdsByRoomId: number[][]
+  gateByToAreaId: Array<PlannedGate | null>
+  keyColorsByArea: KeyColor[][]
+}
+
 type RoomLayout = {
   cellKinds: CellKind[]
   areas: AreaPlan[]
   edges: AreaEdgePlan[]
+  keyColorsByArea: KeyColor[][]
 }
 
 type RoomLayoutAttempt = {
@@ -127,12 +149,6 @@ type ProgressionLayout = {
 type ProgressionAttempt = {
   layout: ProgressionLayout | null
   reason: string
-}
-
-type GateCandidate = {
-  gateCellId: number
-  anchorCellId: number
-  score: number
 }
 
 function rotatePoint(point: Vec2, angle: number): Vec2 {
@@ -221,17 +237,12 @@ function buildCellGraph(cells: Pick<MazeCell, 'id' | 'exits'>[]): number[][] {
   })
 }
 
-function doorColorForAreaId(areaId: number): KeyColor {
-  if (areaId <= 0) return 'blue'
-  return DOOR_COLOR_SEQUENCE[Math.min(areaId - 1, DOOR_COLOR_SEQUENCE.length - 1)]
-}
-
 function buildRoomTargetSizes(config: WorldSizeConfig, seed: number): number[] {
   const rng = mulberry32(seed)
 
   return Array.from({ length: config.roomCount }, (_, roomId) => {
     const jitter = Math.floor(rng() * 3) - 1
-    const bonus = roomId === 0 || roomId === config.roomCount - 1 ? 1 : 0
+    const bonus = roomId === 0 ? 1 : roomId === config.roomCount - 1 ? 2 : 0
     return Math.max(config.minRoomSize, config.targetRoomSize + jitter + bonus)
   })
 }
@@ -328,7 +339,6 @@ function collectGateCandidates(
   graph: number[][],
   cells: Pick<MazeCell, 'center'>[],
   parentRoomId: number,
-  nextRoomId: number,
   parentRoomCellIds: number[],
   roomIdByCellId: number[],
   gateCellIds: Set<number>,
@@ -366,7 +376,7 @@ function collectGateCandidates(
         if (seenPairs.has(pairKey)) continue
         seenPairs.add(pairKey)
 
-        if (!canClaimRoomCell(graph, anchorCellId, nextRoomId, roomIdByCellId, gateCellIds, new Set([gateCellId]))) continue
+        if (!canClaimRoomCell(graph, anchorCellId, -2, roomIdByCellId, gateCellIds, new Set([gateCellId]))) continue
 
         candidates.push({
           gateCellId,
@@ -379,6 +389,184 @@ function collectGateCandidates(
 
   candidates.sort((a, b) => b.score - a.score)
   return candidates.slice(0, GATE_CANDIDATE_LIMIT)
+}
+
+function chooseDoorColor(
+  roomId: number,
+  parentAreaId: number,
+  childAreaIdsByRoomId: number[][],
+  colorByToAreaId: Array<KeyColor | null>,
+  depthByRoomId: number[],
+  rng: () => number,
+): KeyColor {
+  const siblingColors = childAreaIdsByRoomId[parentAreaId]
+    .filter((childAreaId) => childAreaId < roomId)
+    .map((childAreaId) => colorByToAreaId[childAreaId])
+    .filter((color): color is KeyColor => color !== null)
+
+  const baseColors = KEY_COLORS.filter((color) => color !== 'green')
+  const preferred = baseColors.filter((color) => !siblingColors.includes(color))
+  const pool = preferred.length > 0 ? preferred : baseColors
+
+  if (depthByRoomId[roomId] >= 2 && siblingColors.every((color) => color !== 'green') && rng() < 0.18) {
+    return 'green'
+  }
+
+  return pool[Math.floor(rng() * pool.length)]
+}
+
+function buildExplorationOrder(childAreaIdsByRoomId: number[][], finalAreaId: number, seed: number): number[] {
+  const rng = mulberry32(seed)
+  const order: number[] = []
+  const frontierAreaIds = childAreaIdsByRoomId[0].filter((areaId) => areaId !== finalAreaId)
+
+  while (frontierAreaIds.length > 0) {
+    const index = Math.floor(rng() * frontierAreaIds.length)
+    const [roomId] = frontierAreaIds.splice(index, 1)
+    order.push(roomId)
+
+    const childAreaIds = childAreaIdsByRoomId[roomId]
+      .filter((areaId) => areaId !== finalAreaId)
+      .sort((a, b) => a - b)
+    for (const childAreaId of childAreaIds) frontierAreaIds.push(childAreaId)
+  }
+
+  return order
+}
+
+function chooseKeySourceArea(
+  toAreaId: number,
+  parentAreaId: number,
+  accessibleAreaIds: number[],
+  childAreaIdsByRoomId: number[][],
+  keyCountsByArea: number[],
+  depthByRoomId: number[],
+  rng: () => number,
+): number {
+  if (parentAreaId === 0) {
+    const rootChildIds = childAreaIdsByRoomId[0].filter((areaId) => areaId !== childAreaIdsByRoomId.length - 1)
+    if (rootChildIds.indexOf(toAreaId) < Math.min(2, rootChildIds.length)) return 0
+  }
+
+  const preferredAreaIds = accessibleAreaIds.filter((areaId) => areaId !== parentAreaId)
+  const candidateAreaIds = preferredAreaIds.length > 0 ? preferredAreaIds : accessibleAreaIds
+
+  const rankedAreaIds = candidateAreaIds.slice().sort((a, b) => {
+    const keyDelta = keyCountsByArea[a] - keyCountsByArea[b]
+    if (keyDelta !== 0) return keyDelta
+
+    const depthDelta = depthByRoomId[b] - depthByRoomId[a]
+    if (depthDelta !== 0) return depthDelta
+
+    return a - b
+  })
+
+  const window = rankedAreaIds.slice(0, Math.min(3, rankedAreaIds.length))
+  return window[Math.floor(rng() * window.length)]
+}
+
+function buildRoomGraphPlan(config: WorldSizeConfig, seed: number): RoomGraphPlan {
+  const finalAreaId = config.roomCount - 1
+  const parentAreaIdByRoomId = new Array<number | null>(config.roomCount).fill(null)
+  const depthByRoomId = new Array(config.roomCount).fill(0)
+  const childAreaIdsByRoomId = Array.from({ length: config.roomCount }, () => [] as number[])
+  const gateByToAreaId = new Array<PlannedGate | null>(config.roomCount).fill(null)
+  const keyColorsByArea = Array.from({ length: config.roomCount }, () => [] as KeyColor[])
+  const colorByToAreaId = new Array<KeyColor | null>(config.roomCount).fill(null)
+  const rng = mulberry32(seed)
+
+  const addChild = (parentAreaId: number, childAreaId: number) => {
+    parentAreaIdByRoomId[childAreaId] = parentAreaId
+    depthByRoomId[childAreaId] = depthByRoomId[parentAreaId] + 1
+    childAreaIdsByRoomId[parentAreaId].push(childAreaId)
+  }
+
+  let nextAreaId = 1
+  const initialRootChildren = Math.min(finalAreaId, config.roomCount >= 5 ? 2 : 1)
+  for (let count = 0; count < initialRootChildren; count += 1) {
+    addChild(0, nextAreaId)
+    nextAreaId += 1
+  }
+
+  while (nextAreaId < finalAreaId) {
+    const candidateParentIds = Array.from({ length: nextAreaId }, (_, areaId) => areaId)
+      .filter((areaId) => {
+        if (areaId === finalAreaId) return false
+        const maxChildren = areaId === 0 ? 3 : 2
+        return childAreaIdsByRoomId[areaId].length < maxChildren
+      })
+      .sort((a, b) => {
+        const depthDelta = depthByRoomId[a] - depthByRoomId[b]
+        if (depthDelta !== 0) return depthDelta
+        const childDelta = childAreaIdsByRoomId[a].length - childAreaIdsByRoomId[b].length
+        if (childDelta !== 0) return childDelta
+        return a - b
+      })
+
+    const window = candidateParentIds.slice(0, Math.min(3, candidateParentIds.length))
+    const parentAreaId = window[Math.floor(rng() * window.length)]
+    addChild(parentAreaId, nextAreaId)
+    nextAreaId += 1
+  }
+
+  const leafAreaIds = Array.from({ length: finalAreaId }, (_, areaId) => areaId)
+    .filter((areaId) => areaId !== 0 && childAreaIdsByRoomId[areaId].length === 0)
+    .sort((a, b) => depthByRoomId[b] - depthByRoomId[a] || a - b)
+  const finalParentChoices = leafAreaIds.slice(0, Math.min(3, leafAreaIds.length))
+  const finalParentAreaId = finalParentChoices[Math.floor(rng() * finalParentChoices.length)]
+  addChild(finalParentAreaId, finalAreaId)
+
+  for (let areaId = 1; areaId < finalAreaId; areaId += 1) {
+    const parentAreaId = parentAreaIdByRoomId[areaId]
+    if (parentAreaId === null) continue
+
+    const color = chooseDoorColor(areaId, parentAreaId, childAreaIdsByRoomId, colorByToAreaId, depthByRoomId, rng)
+    colorByToAreaId[areaId] = color
+    gateByToAreaId[areaId] = {
+      fromAreaId: parentAreaId,
+      toAreaId: areaId,
+      gate: 'door',
+      color,
+    }
+  }
+
+  gateByToAreaId[finalAreaId] = {
+    fromAreaId: finalParentAreaId,
+    toAreaId: finalAreaId,
+    gate: 'socket',
+    color: null,
+  }
+
+  const accessibleAreaIds = [0]
+  const explorationOrder = buildExplorationOrder(childAreaIdsByRoomId, finalAreaId, mixSeed(seed, 73))
+  const keyCountsByArea = new Array(config.roomCount).fill(0)
+
+  for (const areaId of explorationOrder) {
+    const parentAreaId = parentAreaIdByRoomId[areaId]
+    const plannedGate = gateByToAreaId[areaId]
+    if (parentAreaId === null || !plannedGate || plannedGate.color === null) continue
+
+    const sourceAreaId = chooseKeySourceArea(
+      areaId,
+      parentAreaId,
+      accessibleAreaIds,
+      childAreaIdsByRoomId,
+      keyCountsByArea,
+      depthByRoomId,
+      rng,
+    )
+    keyColorsByArea[sourceAreaId].push(plannedGate.color)
+    keyCountsByArea[sourceAreaId] += 1
+    accessibleAreaIds.push(areaId)
+  }
+
+  return {
+    parentAreaIdByRoomId,
+    depthByRoomId,
+    childAreaIdsByRoomId,
+    gateByToAreaId,
+    keyColorsByArea,
+  }
 }
 
 function validateRoomLayout(
@@ -460,12 +648,13 @@ function buildRoomLayout(
   graph: number[][],
   startCellId: number,
   config: WorldSizeConfig,
+  plan: RoomGraphPlan,
   seed: number,
 ): RoomLayoutAttempt {
   const roomIdByCellId = new Array(cells.length).fill(-1)
   const gateCellIds = new Set<number>()
   const roomTargetSizes = buildRoomTargetSizes(config, mixSeed(seed, 1))
-  const areas: AreaPlan[] = []
+  const areas = new Array<AreaPlan>(config.roomCount)
   const edges: AreaEdgePlan[] = []
 
   const startRoomCellIds = growRoomCells(
@@ -482,29 +671,36 @@ function buildRoomLayout(
   )
   if (!startRoomCellIds) return { layout: null, reason: 'start-room' }
 
-  areas.push({
+  areas[0] = {
     id: 0,
     parentAreaId: null,
     depth: 0,
     entryCellId: startCellId,
     cellIds: startRoomCellIds,
-    childAreaIds: config.roomCount > 1 ? [1] : [],
-  })
+    childAreaIds: plan.childAreaIdsByRoomId[0].slice(),
+  }
 
-  const extend = (parentRoomId: number, nextRoomId: number): boolean => {
-    if (nextRoomId >= config.roomCount) return true
+  const placementOrder = Array.from({ length: config.roomCount - 1 }, (_, index) => index + 1)
+  const placeRoom = (orderIndex: number): boolean => {
+    if (orderIndex >= placementOrder.length) return true
+
+    const roomId = placementOrder[orderIndex]
+    const parentAreaId = plan.parentAreaIdByRoomId[roomId]
+    const plannedGate = plan.gateByToAreaId[roomId]
+    if (parentAreaId === null || !plannedGate) return false
+
+    const parentArea = areas[parentAreaId]
+    if (!parentArea) return false
 
     const gateCandidates = collectGateCandidates(
       graph,
       cells,
-      parentRoomId,
-      nextRoomId,
-      areas[parentRoomId].cellIds,
+      parentAreaId,
+      parentArea.cellIds,
       roomIdByCellId,
       gateCellIds,
-      mixSeed(seed, nextRoomId * 17 + parentRoomId + 1),
+      mixSeed(seed, roomId * 37 + orderIndex + 1),
     )
-    if (gateCandidates.length === 0) return false
 
     for (let candidateIndex = 0; candidateIndex < gateCandidates.length; candidateIndex += 1) {
       const candidate = gateCandidates[candidateIndex]
@@ -515,12 +711,12 @@ function buildRoomLayout(
         cells,
         roomIdByCellId,
         gateCellIds,
-        nextRoomId,
+        roomId,
         candidate.anchorCellId,
-        roomTargetSizes[nextRoomId],
+        roomTargetSizes[roomId],
         config.minRoomSize,
         candidate.gateCellId,
-        mixSeed(seed, nextRoomId * 131 + candidateIndex + 1),
+        mixSeed(seed, roomId * 131 + candidateIndex + 1),
       )
 
       if (!roomCellIds) {
@@ -528,50 +724,52 @@ function buildRoomLayout(
         continue
       }
 
-      areas.push({
-        id: nextRoomId,
-        parentAreaId: parentRoomId,
-        depth: nextRoomId,
+      areas[roomId] = {
+        id: roomId,
+        parentAreaId,
+        depth: plan.depthByRoomId[roomId],
         entryCellId: candidate.anchorCellId,
         cellIds: roomCellIds,
-        childAreaIds: nextRoomId + 1 < config.roomCount ? [nextRoomId + 1] : [],
-      })
+        childAreaIds: plan.childAreaIdsByRoomId[roomId].slice(),
+      }
       edges.push({
-        fromAreaId: parentRoomId,
-        toAreaId: nextRoomId,
+        fromAreaId: plannedGate.fromAreaId,
+        toAreaId: plannedGate.toAreaId,
         gateCellId: candidate.gateCellId,
         gateCellIds: [candidate.gateCellId],
-        gate: nextRoomId === config.roomCount - 1 ? 'socket' : 'door',
-        color: nextRoomId === config.roomCount - 1 ? null : doorColorForAreaId(nextRoomId),
+        gate: plannedGate.gate,
+        color: plannedGate.color,
       })
 
-      if (extend(nextRoomId, nextRoomId + 1)) return true
+      if (placeRoom(orderIndex + 1)) return true
 
       edges.pop()
-      areas.pop()
       for (const roomCellId of roomCellIds) roomIdByCellId[roomCellId] = -1
       gateCellIds.delete(candidate.gateCellId)
+      areas[roomId] = undefined as unknown as AreaPlan
     }
 
     return false
   }
 
-  if (!extend(0, 1)) return { layout: null, reason: 'room-chain' }
+  if (!placeRoom(0)) return { layout: null, reason: 'room-branching' }
 
+  const placedAreas = areas.filter((area): area is AreaPlan => area !== undefined)
   const cellKinds: CellKind[] = new Array(cells.length).fill('wall')
-  for (const area of areas) {
+  for (const area of placedAreas) {
     for (const cellId of area.cellIds) cellKinds[cellId] = 'floor'
   }
   for (const edge of edges) cellKinds[edge.gateCellId] = 'floor'
 
-  const validationFailure = validateRoomLayout(graph, cellKinds, areas, edges)
+  const validationFailure = validateRoomLayout(graph, cellKinds, placedAreas, edges)
   if (validationFailure) return { layout: null, reason: validationFailure }
 
   return {
     layout: {
       cellKinds,
-      areas,
+      areas: placedAreas,
       edges,
+      keyColorsByArea: plan.keyColorsByArea.map((keyColors) => keyColors.slice()),
     },
     reason: 'ok',
   }
@@ -716,18 +914,11 @@ function buildProgressionFromRoomLayout(
   const cellFeatures: CellFeature[] = new Array(cells.length).fill('none')
   const chipCellIds: number[] = []
   const chipCellIdsByArea = roomLayout.areas.map(() => [] as number[])
-  const keyColorsByArea = roomLayout.areas.map(() => [] as KeyColor[])
-  const plannedKeysByArea = roomLayout.areas.map(() => [] as KeyColor[])
-  let hasGreenKey = false
+  const keyColorsByArea = roomLayout.keyColorsByArea.map((keyColors) => keyColors.slice())
 
   for (const edge of roomLayout.edges) {
     if (edge.gate === 'door' && edge.color !== null) {
       cellFeatures[edge.gateCellId] = featureForDoor(edge.color)
-      if (edge.color === 'green') {
-        if (hasGreenKey) continue
-        hasGreenKey = true
-      }
-      plannedKeysByArea[edge.fromAreaId].push(edge.color)
     }
   }
 
@@ -748,8 +939,8 @@ function buildProgressionFromRoomLayout(
       continue
     }
 
-    const chipCount = 1
-    const requiredCells = chipCount + plannedKeysByArea[area.id].length
+    const chipCount = area.childAreaIds.length > 1 ? 2 : 1
+    const requiredCells = chipCount + keyColorsByArea[area.id].length
     if (candidates.length < requiredCells) return { layout: null, reason: 'room-capacity' }
 
     for (let chipIndex = 0; chipIndex < chipCount; chipIndex += 1) {
@@ -760,12 +951,11 @@ function buildProgressionFromRoomLayout(
       chipCellIdsByArea[area.id].push(chipCellId)
     }
 
-    for (let keyIndex = 0; keyIndex < plannedKeysByArea[area.id].length; keyIndex += 1) {
+    for (let keyIndex = 0; keyIndex < keyColorsByArea[area.id].length; keyIndex += 1) {
       const keyCellId = candidates[chipCount + keyIndex]
-      const color = plannedKeysByArea[area.id][keyIndex]
+      const color = keyColorsByArea[area.id][keyIndex]
       if (keyCellId === undefined || color === undefined) return { layout: null, reason: 'key-placement' }
       cellFeatures[keyCellId] = featureForKey(color)
-      keyColorsByArea[area.id].push(color)
     }
   }
 
@@ -860,7 +1050,8 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
 
   for (let attempt = 0; attempt < WORLD_GENERATION_ATTEMPTS; attempt += 1) {
     const attemptSeed = mixSeed(options.seed, attempt + 1)
-    const roomLayout = buildRoomLayout(draftCells, graph, startCellId, config, attemptSeed)
+    const graphPlan = buildRoomGraphPlan(config, mixSeed(attemptSeed, 11))
+    const roomLayout = buildRoomLayout(draftCells, graph, startCellId, config, graphPlan, mixSeed(attemptSeed, 23))
     if (!roomLayout.layout) {
       failureCounts.set(roomLayout.reason, (failureCounts.get(roomLayout.reason) ?? 0) + 1)
       continue
