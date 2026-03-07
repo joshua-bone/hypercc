@@ -643,6 +643,82 @@ function validateRoomLayout(
   return null
 }
 
+function findExpandableRoomId(
+  graph: number[][],
+  cellId: number,
+  roomIdByCellId: number[],
+  edgeByGateCellId: Map<number, AreaEdgePlan>,
+): number | null {
+  if (roomIdByCellId[cellId] !== -1 || edgeByGateCellId.has(cellId)) return null
+
+  const adjacentRoomIds = new Set<number>()
+  for (const neighborId of graph[cellId]) {
+    const neighborRoomId = roomIdByCellId[neighborId]
+    if (neighborRoomId !== -1) adjacentRoomIds.add(neighborRoomId)
+  }
+
+  if (adjacentRoomIds.size !== 1) return null
+  const roomId = adjacentRoomIds.values().next().value as number
+
+  for (const neighborId of graph[cellId]) {
+    const neighborRoomId = roomIdByCellId[neighborId]
+    if (neighborRoomId !== -1 && neighborRoomId !== roomId) return null
+
+    const gate = edgeByGateCellId.get(neighborId)
+    if (gate && gate.fromAreaId !== roomId && gate.toAreaId !== roomId) return null
+  }
+
+  return roomId
+}
+
+function expandRoomsToFillSpace(
+  graph: number[][],
+  cells: Pick<MazeCell, 'center'>[],
+  areas: AreaPlan[],
+  edges: AreaEdgePlan[],
+  roomIdByCellId: number[],
+  seed: number,
+): AreaPlan[] {
+  const rng = mulberry32(seed)
+  const edgeByGateCellId = new Map(edges.map((edge) => [edge.gateCellId, edge]))
+  let changed = true
+
+  while (changed) {
+    changed = false
+    const candidates: Array<{ cellId: number; score: number }> = []
+
+    for (let cellId = 0; cellId < roomIdByCellId.length; cellId += 1) {
+      if (findExpandableRoomId(graph, cellId, roomIdByCellId, edgeByGateCellId) === null) continue
+      candidates.push({
+        cellId,
+        score: pointRadiusSq(cells[cellId].center) * 0.35 + rng(),
+      })
+    }
+
+    candidates.sort((a, b) => b.score - a.score)
+
+    for (const candidate of candidates) {
+      const roomId = findExpandableRoomId(graph, candidate.cellId, roomIdByCellId, edgeByGateCellId)
+      if (roomId === null) continue
+      roomIdByCellId[candidate.cellId] = roomId
+      changed = true
+    }
+  }
+
+  const expandedAreas = areas.map((area) => ({
+    ...area,
+    cellIds: [] as number[],
+  }))
+
+  for (let cellId = 0; cellId < roomIdByCellId.length; cellId += 1) {
+    const roomId = roomIdByCellId[cellId]
+    if (roomId === -1) continue
+    expandedAreas[roomId].cellIds.push(cellId)
+  }
+
+  return expandedAreas
+}
+
 function buildRoomLayout(
   cells: Pick<MazeCell, 'center'>[],
   graph: number[][],
@@ -754,7 +830,14 @@ function buildRoomLayout(
 
   if (!placeRoom(0)) return { layout: null, reason: 'room-branching' }
 
-  const placedAreas = areas.filter((area): area is AreaPlan => area !== undefined)
+  const placedAreas = expandRoomsToFillSpace(
+    graph,
+    cells,
+    areas.filter((area): area is AreaPlan => area !== undefined),
+    edges,
+    roomIdByCellId,
+    mixSeed(seed, 977),
+  )
   const cellKinds: CellKind[] = new Array(cells.length).fill('wall')
   for (const area of placedAreas) {
     for (const cellId of area.cellIds) cellKinds[cellId] = 'floor'

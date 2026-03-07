@@ -7,6 +7,7 @@ export type Grid45Session = {
   getSnapshot(): GameState
   subscribe(listener: (state: GameState) => void): () => void
   setIntent(intent: MoveIntent): void
+  restart(): void
   reset(size?: WorldSize): void
   start(): void
   stop(): void
@@ -23,8 +24,9 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
   const listeners = new Set<(state: GameState) => void>()
   let worldSize = initialWorldSize
   const createWorld = () => createGrid45World({ seed: seedPort.nextSeed(), size: worldSize })
+  let currentWorld = createWorld()
 
-  let state = createInitialGameState(createWorld())
+  let state = createInitialGameState(currentWorld)
   let pendingIntent: MoveIntent = 'stay'
   let stopClock = () => {}
   let running = false
@@ -70,11 +72,18 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
         if (!state.levelComplete) beginTicking()
       }
     },
+    restart() {
+      haltClock()
+      pendingIntent = 'stay'
+      state = createInitialGameState(currentWorld)
+      emit()
+    },
     reset(size = worldSize) {
       worldSize = size
       haltClock()
       pendingIntent = 'stay'
-      state = createInitialGameState(createWorld())
+      currentWorld = createWorld()
+      state = createInitialGameState(currentWorld)
       emit()
     },
     start() {

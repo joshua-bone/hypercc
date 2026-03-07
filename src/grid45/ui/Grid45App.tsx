@@ -236,7 +236,7 @@ export default function Grid45App() {
       <div className="grid45Hud">
         <div className="grid45Eyebrow">Hyperbolic CC</div>
         <div className="grid45Line">Collect every chip, pass through the socket, then reach the exit.</div>
-        <div className="grid45Line">Arrow keys or WASD move. Regenerate builds a new maze.</div>
+        <div className="grid45Line">Arrow keys or WASD move. Restart replays this maze; Generate builds a new one.</div>
         <div className="grid45Metrics">Tick {snapshot.tick}</div>
         <div className="grid45Metrics">State: {describeOutcome(snapshot)}</div>
         <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
@@ -254,6 +254,9 @@ export default function Grid45App() {
           </label>
         ) : null}
         <div className="grid45Controls">
+          <button className="grid45Button" onClick={() => session.restart()}>
+            Restart Map
+          </button>
           <label className="grid45SelectLabel">
             <span>Size</span>
             <select
