@@ -20,7 +20,6 @@ import {
 
 const WORLD_ROTATION = -Math.PI / 4
 const WORLD_GENERATION_ATTEMPTS = 192
-const MIN_AREA_COUNT = 6
 const PATH_LAYOUT_ATTEMPTS = 10
 const LEAF_CANDIDATE_LIMIT = 16
 const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
@@ -33,7 +32,7 @@ type WorldSizeConfig = {
   maxCells: number
   maxCenterRadius: number
   targetAreaCount: number
-  minAreaWeight: number
+  minAreaCount: number
 }
 
 const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
@@ -41,31 +40,31 @@ const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
     maxCells: 760,
     maxCenterRadius: 0.994,
     targetAreaCount: 6,
-    minAreaWeight: 3,
+    minAreaCount: 4,
   },
   small: {
     maxCells: 880,
     maxCenterRadius: 0.994,
     targetAreaCount: 7,
-    minAreaWeight: 4,
+    minAreaCount: 5,
   },
   medium: {
     maxCells: 1600,
     maxCenterRadius: 0.996,
     targetAreaCount: 7,
-    minAreaWeight: 4,
+    minAreaCount: 5,
   },
   large: {
     maxCells: 1900,
     maxCenterRadius: 0.997,
-    targetAreaCount: 8,
-    minAreaWeight: 5,
+    targetAreaCount: 6,
+    minAreaCount: 5,
   },
   huge: {
     maxCells: 2500,
     maxCenterRadius: 0.998,
-    targetAreaCount: 9,
-    minAreaWeight: 5,
+    targetAreaCount: 4,
+    minAreaCount: 4,
   },
 }
 
@@ -357,204 +356,104 @@ function buildRootedFloorTree(cells: MazeCell[], startCellId: number): RootedFlo
   }
 }
 
-function buildDepthLayers(tree: RootedFloorTree): number[][] {
-  const maxDepth = tree.floorIds.reduce((best, cellId) => Math.max(best, tree.depth[cellId]), 0)
-  const layers = Array.from({ length: maxDepth + 1 }, () => [] as number[])
+function buildPathToRoot(parent: number[], targetCellId: number): number[] {
+  const pathCellIds: number[] = []
+  let currentCellId = targetCellId
 
-  for (const cellId of tree.floorIds) {
-    layers[tree.depth[cellId]].push(cellId)
+  while (currentCellId !== -1) {
+    pathCellIds.push(currentCellId)
+    currentCellId = parent[currentCellId]
   }
 
-  return layers
+  pathCellIds.reverse()
+  return pathCellIds
 }
 
-function segmentLayerWeights(weights: number[], areaCount: number, minAreaWeight: number, seed: number): number[] | null {
-  if (weights.length < areaCount) return null
+function findArticulationPoints(tree: RootedFloorTree): Set<number> {
+  const visited = new Array(tree.graph.length).fill(false)
+  const discovery = new Array(tree.graph.length).fill(-1)
+  const low = new Array(tree.graph.length).fill(-1)
+  const articulationIds = new Set<number>()
+  let time = 0
 
-  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
-  if (totalWeight < areaCount * minAreaWeight) return null
+  const visit = (cellId: number, parentCellId: number) => {
+    visited[cellId] = true
+    discovery[cellId] = time
+    low[cellId] = time
+    time += 1
+
+    let childCount = 0
+    for (const neighborId of tree.graph[cellId]) {
+      if (!visited[neighborId]) {
+        childCount += 1
+        visit(neighborId, cellId)
+        low[cellId] = Math.min(low[cellId], low[neighborId])
+        if (parentCellId !== -1 && low[neighborId] >= discovery[cellId]) {
+          articulationIds.add(cellId)
+        }
+      } else if (neighborId !== parentCellId) {
+        low[cellId] = Math.min(low[cellId], discovery[neighborId])
+      }
+    }
+
+    if (parentCellId === -1 && childCount > 1) articulationIds.add(cellId)
+  }
+
+  for (const floorId of tree.floorIds) {
+    if (!visited[floorId]) visit(floorId, -1)
+  }
+
+  return articulationIds
+}
+
+function buildRoutePlans(tree: RootedFloorTree, articulationIds: Set<number>): Array<{
+  targetCellId: number
+  pathCellIds: number[]
+  candidateGateIds: number[]
+}> {
+  const leafIds = tree.floorIds.filter((cellId) => tree.children[cellId].length === 0)
+  const candidateTargets = (leafIds.length > 0 ? leafIds : tree.floorIds)
+    .slice()
+    .sort((a, b) => tree.depth[b] - tree.depth[a] || a - b)
+    .slice(0, LEAF_CANDIDATE_LIMIT)
+
+  return candidateTargets.map((targetCellId) => {
+    const pathCellIds = buildPathToRoot(tree.parent, targetCellId)
+    return {
+      targetCellId,
+      pathCellIds,
+      candidateGateIds: pathCellIds.slice(1, -1).filter((cellId) => articulationIds.has(cellId)),
+    }
+  })
+}
+
+function selectGateIds(candidateGateIds: number[], gateCount: number, seed: number): number[] | null {
+  if (candidateGateIds.length < gateCount) return null
 
   const rng = mulberry32(seed)
-  const boundaries = [0]
-  let startIndex = 0
-  let consumedWeight = 0
+  const selectedIndexes: number[] = []
+  let previousIndex = -1
 
-  for (let areaIndex = 0; areaIndex < areaCount - 1; areaIndex += 1) {
-    const remainingAreas = areaCount - areaIndex
-    const remainingLayers = weights.length - startIndex
-    if (remainingLayers < remainingAreas) return null
+  for (let slot = 0; slot < gateCount; slot += 1) {
+    const remainingSlots = gateCount - slot
+    const minIndex = previousIndex + 1
+    const maxIndex = candidateGateIds.length - remainingSlots
+    const center = (((slot + 1) * (candidateGateIds.length + 1)) / (gateCount + 1)) - 1
+    const spread = Math.max(1, Math.ceil(candidateGateIds.length / Math.max(4, gateCount * 2)))
+    let low = Math.max(minIndex, Math.floor(center - spread))
+    let high = Math.min(maxIndex, Math.ceil(center + spread))
 
-    const remainingWeight = totalWeight - consumedWeight
-    const minWeightForRest = (remainingAreas - 1) * minAreaWeight
-    const targetWeight = remainingWeight / remainingAreas
-    const targetSlack = 1.08 + rng() * 0.42
-    const maxTargetWeight = Math.max(minAreaWeight, targetWeight * targetSlack)
-    const maxEndExclusive = weights.length - (remainingAreas - 1)
-
-    let endIndex = startIndex
-    let segmentWeight = 0
-
-    while (endIndex < maxEndExclusive && segmentWeight < minAreaWeight) {
-      segmentWeight += weights[endIndex]
-      endIndex += 1
+    if (low > high) {
+      low = minIndex
+      high = maxIndex
     }
 
-    if (segmentWeight < minAreaWeight) return null
-
-    while (endIndex < maxEndExclusive) {
-      const nextWeight = weights[endIndex]
-      if (remainingWeight - (segmentWeight + nextWeight) < minWeightForRest) break
-      if (segmentWeight >= maxTargetWeight && rng() < 0.72) break
-
-      segmentWeight += nextWeight
-      endIndex += 1
-    }
-
-    boundaries.push(endIndex)
-    startIndex = endIndex
-    consumedWeight += segmentWeight
+    const chosenIndex = low + Math.floor(rng() * (high - low + 1))
+    selectedIndexes.push(chosenIndex)
+    previousIndex = chosenIndex
   }
 
-  boundaries.push(weights.length)
-
-  let lastWeight = 0
-  for (let index = boundaries[boundaries.length - 2]; index < weights.length; index += 1) {
-    lastWeight += weights[index]
-  }
-
-  return lastWeight >= minAreaWeight ? boundaries : null
-}
-
-function buildBandAreas(
-  tree: RootedFloorTree,
-  startCellId: number,
-  targetAreaCount: number,
-  minAreaWeight: number,
-  seed: number,
-): { areas: AreaPlan[]; gateCellIdsByArea: number[][] } | null {
-  const depthLayers = buildDepthLayers(tree)
-  const layerWeights = depthLayers.map((layer) => layer.length)
-  const maxAreaCount = Math.min(targetAreaCount, depthLayers.length)
-
-  for (let areaCount = maxAreaCount; areaCount >= MIN_AREA_COUNT; areaCount -= 1) {
-    for (let attempt = 0; attempt < PATH_LAYOUT_ATTEMPTS; attempt += 1) {
-      const boundaries = segmentLayerWeights(layerWeights, areaCount, minAreaWeight, mixSeed(seed, areaCount * 41 + attempt + 1))
-      if (!boundaries) continue
-
-      const areas: AreaPlan[] = []
-      const areaIdByCellId = new Array(tree.graph.length).fill(-1)
-      for (let areaId = 0; areaId < boundaries.length - 1; areaId += 1) {
-        const startDepth = boundaries[areaId]
-        const endDepth = boundaries[areaId + 1]
-        const cellIds: number[] = []
-
-        for (let depthIndex = startDepth; depthIndex < endDepth; depthIndex += 1) {
-          for (const cellId of depthLayers[depthIndex]) {
-            cellIds.push(cellId)
-            areaIdByCellId[cellId] = areaId
-          }
-        }
-
-        areas.push({
-          id: areaId,
-          parentAreaId: areaId === 0 ? null : areaId - 1,
-          depth: areaId,
-          entryCellId: areaId === 0 ? startCellId : -1,
-          cellIds,
-          childAreaIds: areaId + 1 < boundaries.length - 1 ? [areaId + 1] : [],
-        })
-      }
-
-      if (areas.some((area) => area.cellIds.length === 0)) continue
-
-      const gateCellIdsByArea = areas.map(() => [] as number[])
-      let valid = true
-
-      for (let areaId = 1; areaId < areas.length; areaId += 1) {
-        const gateCellIds = areas[areaId].cellIds.filter((cellId) =>
-          tree.graph[cellId].some((neighborId) => areaIdByCellId[neighborId] === areaId - 1),
-        )
-
-        if (gateCellIds.length === 0) {
-          valid = false
-          break
-        }
-
-        const hasContinuation = gateCellIds.some((cellId) =>
-          tree.graph[cellId].some((neighborId) => areaIdByCellId[neighborId] === areaId),
-        )
-        if (!hasContinuation) {
-          valid = false
-          break
-        }
-
-        gateCellIds.sort((a, b) => a - b)
-        gateCellIdsByArea[areaId] = gateCellIds
-        areas[areaId].entryCellId = gateCellIds[0]
-      }
-
-      if (valid) {
-        return {
-          areas,
-          gateCellIdsByArea,
-        }
-      }
-    }
-  }
-
-  return null
-}
-
-function validateAreaBoundaries(graph: number[][], areas: AreaPlan[], edges: AreaEdgePlan[]): string | null {
-  const areaByCellId = new Map<number, number>()
-  const gateCellIdsByAreaId = new Map(edges.map((edge) => [edge.toAreaId, new Set(edge.gateCellIds)]))
-
-  for (const area of areas) {
-    for (const cellId of area.cellIds) {
-      if (areaByCellId.has(cellId)) return 'duplicate-area-cell'
-      areaByCellId.set(cellId, area.id)
-    }
-  }
-
-  for (const area of areas) {
-    for (const cellId of area.cellIds) {
-      for (const neighborId of graph[cellId]) {
-        if (neighborId < cellId) continue
-
-        const fromAreaId = areaByCellId.get(cellId)
-        const toAreaId = areaByCellId.get(neighborId)
-        if (fromAreaId === undefined || toAreaId === undefined) return 'unassigned-area-cell'
-        if (fromAreaId === toAreaId) continue
-
-        const lowAreaId = Math.min(fromAreaId, toAreaId)
-        const highAreaId = Math.max(fromAreaId, toAreaId)
-        if (highAreaId !== lowAreaId + 1) return 'non-local-area-edge'
-
-        const gateCellIds = gateCellIdsByAreaId.get(highAreaId)
-        if (!gateCellIds || (!gateCellIds.has(cellId) && !gateCellIds.has(neighborId))) return 'gate-bypass-edge'
-      }
-    }
-  }
-
-  for (let areaId = 1; areaId < areas.length; areaId += 1) {
-    const gateCellIds = gateCellIdsByAreaId.get(areaId)
-    if (!gateCellIds || gateCellIds.size === 0) return 'missing-gate-group'
-
-    let touchesParent = false
-    let touchesOwnArea = false
-    for (const gateCellId of gateCellIds) {
-      if (graph[gateCellId].some((neighborId) => areaByCellId.get(neighborId) === areaId - 1)) {
-        touchesParent = true
-      }
-      if (graph[gateCellId].some((neighborId) => areaByCellId.get(neighborId) === areaId)) {
-        touchesOwnArea = true
-      }
-    }
-
-    if (!touchesParent || !touchesOwnArea) return 'broken-gate-bridge'
-  }
-
-  return null
+  return selectedIndexes.map((index) => candidateGateIds[index])
 }
 
 function doorColorForAreaId(areaId: number): KeyColor {
@@ -562,17 +461,160 @@ function doorColorForAreaId(areaId: number): KeyColor {
   return DOOR_COLOR_SEQUENCE[Math.min(areaId - 1, DOOR_COLOR_SEQUENCE.length - 1)]
 }
 
-function buildAreaEdges(areas: AreaPlan[], gateCellIdsByArea: number[][]): AreaEdgePlan[] {
-  return areas
-    .filter((area) => area.parentAreaId !== null)
-    .map((area) => ({
-      fromAreaId: area.parentAreaId ?? 0,
-      toAreaId: area.id,
-      gateCellId: area.entryCellId,
-      gateCellIds: gateCellIdsByArea[area.id],
-      gate: area.id === areas.length - 1 ? 'socket' : 'door',
-      color: area.id === areas.length - 1 ? null : doorColorForAreaId(area.id),
-    }))
+function buildAreaPlanFromGateIds(tree: RootedFloorTree, startCellId: number, gateCellIds: number[]): {
+  areas: AreaPlan[]
+  edges: AreaEdgePlan[]
+} {
+  const areaCount = gateCellIds.length + 1
+  const areaIdByCellId = new Array(tree.graph.length).fill(-1)
+  const gateAreaIdByCellId = new Map(gateCellIds.map((gateCellId, index) => [gateCellId, index + 1]))
+  const visitStack: Array<{ cellId: number; areaId: number }> = [{ cellId: startCellId, areaId: 0 }]
+
+  while (visitStack.length > 0) {
+    const next = visitStack.pop()
+    if (!next) break
+
+    const ownAreaId = gateAreaIdByCellId.get(next.cellId) ?? next.areaId
+    areaIdByCellId[next.cellId] = ownAreaId
+    for (let childIndex = tree.children[next.cellId].length - 1; childIndex >= 0; childIndex -= 1) {
+      visitStack.push({
+        cellId: tree.children[next.cellId][childIndex],
+        areaId: ownAreaId,
+      })
+    }
+  }
+
+  const areas: AreaPlan[] = Array.from({ length: areaCount }, (_, areaId) => ({
+    id: areaId,
+    parentAreaId: areaId === 0 ? null : areaId - 1,
+    depth: areaId,
+    entryCellId: areaId === 0 ? startCellId : gateCellIds[areaId - 1],
+    cellIds: [],
+    childAreaIds: areaId + 1 < areaCount ? [areaId + 1] : [],
+  }))
+
+  for (const floorId of tree.floorIds) {
+    const areaId = areaIdByCellId[floorId]
+    if (areaId >= 0) areas[areaId].cellIds.push(floorId)
+  }
+
+  const edges: AreaEdgePlan[] = gateCellIds.map((gateCellId, index) => ({
+    fromAreaId: index,
+    toAreaId: index + 1,
+    gateCellId,
+    gateCellIds: [gateCellId],
+    gate: index + 1 === areaCount - 1 ? 'socket' : 'door',
+    color: index + 1 === areaCount - 1 ? null : doorColorForAreaId(index + 1),
+  }))
+
+  return {
+    areas,
+    edges,
+  }
+}
+
+function validateSingleGateAreas(graph: number[][], areas: AreaPlan[], edges: AreaEdgePlan[]): string | null {
+  const areaIdByCellId = new Array(graph.length).fill(-1)
+  const edgeByToAreaId = new Map(edges.map((edge) => [edge.toAreaId, edge]))
+
+  for (const area of areas) {
+    for (const cellId of area.cellIds) {
+      if (areaIdByCellId[cellId] !== -1) return 'duplicate-area-cell'
+      areaIdByCellId[cellId] = area.id
+    }
+  }
+
+  for (const area of areas) {
+    if (area.cellIds.length === 0) return 'empty-area'
+
+    const areaCellIds = new Set(area.cellIds)
+    const queue: number[] = [area.entryCellId]
+    const visited = new Set<number>([area.entryCellId])
+
+    while (queue.length > 0) {
+      const cellId = queue.shift()
+      if (cellId === undefined) break
+
+      for (const neighborId of graph[cellId]) {
+        if (!areaCellIds.has(neighborId) || visited.has(neighborId)) continue
+        visited.add(neighborId)
+        queue.push(neighborId)
+      }
+    }
+
+    if (visited.size !== area.cellIds.length) return 'disconnected-area'
+  }
+
+  for (let areaId = 1; areaId < areas.length; areaId += 1) {
+    const edge = edgeByToAreaId.get(areaId)
+    if (!edge) return 'missing-gate-edge'
+    if (areaIdByCellId[edge.gateCellId] !== areaId) return 'gate-not-in-child'
+
+    let touchesParent = false
+    let touchesOwnArea = false
+    for (const neighborId of graph[edge.gateCellId]) {
+      if (areaIdByCellId[neighborId] === areaId - 1) touchesParent = true
+      if (areaIdByCellId[neighborId] === areaId) touchesOwnArea = true
+    }
+
+    if (!touchesParent || !touchesOwnArea) return 'broken-gate-bridge'
+  }
+
+  for (const area of areas) {
+    for (const cellId of area.cellIds) {
+      for (const neighborId of graph[cellId]) {
+        if (neighborId < cellId) continue
+
+        const fromAreaId = areaIdByCellId[cellId]
+        const toAreaId = areaIdByCellId[neighborId]
+        if (fromAreaId === -1 || toAreaId === -1) return 'unassigned-area-cell'
+        if (fromAreaId === toAreaId) continue
+
+        const highAreaId = Math.max(fromAreaId, toAreaId)
+        const lowAreaId = Math.min(fromAreaId, toAreaId)
+        if (highAreaId !== lowAreaId + 1) return 'non-local-area-edge'
+
+        const gateCellId = edgeByToAreaId.get(highAreaId)?.gateCellId
+        if (gateCellId === undefined || (cellId !== gateCellId && neighborId !== gateCellId)) return 'gate-bypass-edge'
+      }
+    }
+  }
+
+  return null
+}
+
+function buildChokepointAreas(
+  tree: RootedFloorTree,
+  startCellId: number,
+  targetAreaCount: number,
+  minAreaCount: number,
+  seed: number,
+): { areas: AreaPlan[]; edges: AreaEdgePlan[] } | null {
+  const articulationIds = findArticulationPoints(tree)
+  const routePlans = buildRoutePlans(tree, articulationIds)
+
+  for (const routePlan of routePlans) {
+    const maxAreaCount = Math.min(targetAreaCount, routePlan.candidateGateIds.length + 1)
+    for (let areaCount = maxAreaCount; areaCount >= minAreaCount; areaCount -= 1) {
+      const gateCount = areaCount - 1
+
+      for (let attempt = 0; attempt < PATH_LAYOUT_ATTEMPTS; attempt += 1) {
+        const gateCellIds = selectGateIds(
+          routePlan.candidateGateIds,
+          gateCount,
+          mixSeed(seed, routePlan.targetCellId * 131 + areaCount * 17 + attempt + 1),
+        )
+        if (!gateCellIds) continue
+
+        const layout = buildAreaPlanFromGateIds(tree, startCellId, gateCellIds)
+        if (validateSingleGateAreas(tree.graph, layout.areas, layout.edges) !== null) continue
+
+        return layout
+      }
+    }
+  }
+
+  return null
 }
 
 function makeAreaCandidateOrder(area: AreaPlan, depth: number[], rng: () => number): number[] {
@@ -680,11 +722,10 @@ function buildProgressionFromAreas(
   cells: MazeCell[],
   tree: RootedFloorTree,
   areas: AreaPlan[],
-  gateCellIdsByArea: number[][],
+  edges: AreaEdgePlan[],
   seed: number,
 ): ProgressionAttempt {
-  const edges = buildAreaEdges(areas, gateCellIdsByArea)
-  const boundaryFailure = validateAreaBoundaries(tree.graph, areas, edges)
+  const boundaryFailure = validateSingleGateAreas(tree.graph, areas, edges)
   if (boundaryFailure) {
     return { layout: null, reason: boundaryFailure }
   }
@@ -695,14 +736,12 @@ function buildProgressionFromAreas(
   const chipCellIdsByArea = areas.map(() => [] as number[])
   const keyColorsByArea = areas.map(() => [] as KeyColor[])
   const plannedKeysByArea = areas.map(() => [] as KeyColor[])
-  const reservedCellIdsByArea = gateCellIdsByArea.map((gateCellIds) => new Set(gateCellIds))
+  const reservedCellIdsByArea = areas.map((area) => new Set(area.id === 0 ? [area.entryCellId] : [area.entryCellId]))
   let hasGreenKey = false
 
   for (const edge of edges) {
     if (edge.gate === 'door' && edge.color !== null) {
-      for (const gateCellId of edge.gateCellIds) {
-        cellFeatures[gateCellId] = featureForDoor(edge.color)
-      }
+      cellFeatures[edge.gateCellId] = featureForDoor(edge.color)
       if (edge.color === 'green') {
         if (hasGreenKey) continue
         hasGreenKey = true
@@ -712,10 +751,11 @@ function buildProgressionFromAreas(
   }
 
   const rng = mulberry32(mixSeed(seed, 37))
-  const socketCellId = areas[finalAreaId].entryCellId
-  for (const gateCellId of gateCellIdsByArea[finalAreaId]) {
-    cellFeatures[gateCellId] = 'socket'
+  const socketCellId = edges.find((edge) => edge.gate === 'socket')?.gateCellId ?? -1
+  if (socketCellId < 0) {
+    return { layout: null, reason: 'missing-socket' }
   }
+  cellFeatures[socketCellId] = 'socket'
   let exitCellId = -1
 
   for (const area of areas) {
@@ -781,7 +821,12 @@ function buildProgressionFromAreas(
     color: edge.color,
   }))
 
-  const validation = validateAreaDag(areaDagNodes, areaDagEdges)
+  const dagValidation = validateAreaDag(areaDagNodes, areaDagEdges)
+  const validation: AreaDag['validation'] = dagValidation.passed ? {
+    passed: true,
+    summary: `Validated ${areaDagNodes.length} BFS areas and ${areaDagEdges.length} single-cell gates`,
+    steps: ['Layout: every area transition is a single gate cell on the live map', ...dagValidation.steps],
+  } : dagValidation
   if (!validation.passed) {
     return { layout: null, reason: 'dag-validation' }
   }
@@ -813,12 +858,12 @@ function buildProgressionLayout(
     return { layout: null, reason: 'invalid-floor-tree' }
   }
 
-  const bandedAreas = buildBandAreas(tree, startCellId, config.targetAreaCount, config.minAreaWeight, seed)
-  if (!bandedAreas) {
+  const chokepointAreas = buildChokepointAreas(tree, startCellId, config.targetAreaCount, config.minAreaCount, seed)
+  if (!chokepointAreas) {
     return { layout: null, reason: 'area-layout' }
   }
 
-  return buildProgressionFromAreas(cells, tree, bandedAreas.areas, bandedAreas.gateCellIdsByArea, mixSeed(seed, 101))
+  return buildProgressionFromAreas(cells, tree, chokepointAreas.areas, chokepointAreas.edges, mixSeed(seed, 101))
 }
 
 function rotateCell(cell: HyperCell): Pick<MazeCell, 'id' | 'center' | 'vertices'> {
