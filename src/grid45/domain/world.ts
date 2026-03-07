@@ -3,15 +3,14 @@ import { generateTiling, type Cell as HyperCell } from '../../hyper/tiling'
 import { dot, norm, type Vec2 } from '../../hyper/vec2'
 import { directionVectors, directions } from './directions'
 import {
+  createEmptyKeyInventory,
   featureForDoor,
   featureForKey,
-  createEmptyKeyInventory,
   type AreaDag,
   type AreaDagEdge,
   type AreaDagNode,
   type CellFeature,
   type CellKind,
-  type Direction,
   type DirectionMap,
   type KeyColor,
   type MazeCell,
@@ -19,11 +18,11 @@ import {
 } from './model'
 
 const WORLD_ROTATION = -Math.PI / 4
-const WORLD_GENERATION_ATTEMPTS = 192
-const PATH_LAYOUT_ATTEMPTS = 10
-const LEAF_CANDIDATE_LIMIT = 16
+const WORLD_GENERATION_ATTEMPTS = 96
+const GATE_CANDIDATE_LIMIT = 20
+const FRONTIER_SAMPLE_COUNT = 6
 const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
-const DOOR_COLOR_SEQUENCE: KeyColor[] = ['blue', 'green', 'red', 'yellow']
+const DOOR_COLOR_SEQUENCE: KeyColor[] = ['blue', 'red', 'green', 'yellow', 'green', 'red']
 
 export const worldSizes = ['tiny', 'small', 'medium', 'large', 'huge'] as const
 export type WorldSize = (typeof worldSizes)[number]
@@ -31,40 +30,46 @@ export type WorldSize = (typeof worldSizes)[number]
 type WorldSizeConfig = {
   maxCells: number
   maxCenterRadius: number
-  targetAreaCount: number
-  minAreaCount: number
+  roomCount: number
+  minRoomSize: number
+  targetRoomSize: number
 }
 
 const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
   tiny: {
     maxCells: 760,
     maxCenterRadius: 0.994,
-    targetAreaCount: 6,
-    minAreaCount: 4,
+    roomCount: 4,
+    minRoomSize: 5,
+    targetRoomSize: 8,
   },
   small: {
-    maxCells: 880,
-    maxCenterRadius: 0.994,
-    targetAreaCount: 7,
-    minAreaCount: 5,
+    maxCells: 920,
+    maxCenterRadius: 0.995,
+    roomCount: 5,
+    minRoomSize: 6,
+    targetRoomSize: 9,
   },
   medium: {
     maxCells: 1600,
     maxCenterRadius: 0.996,
-    targetAreaCount: 7,
-    minAreaCount: 5,
+    roomCount: 6,
+    minRoomSize: 8,
+    targetRoomSize: 11,
   },
   large: {
-    maxCells: 1900,
+    maxCells: 2100,
     maxCenterRadius: 0.997,
-    targetAreaCount: 6,
-    minAreaCount: 5,
+    roomCount: 7,
+    minRoomSize: 10,
+    targetRoomSize: 13,
   },
   huge: {
-    maxCells: 2500,
+    maxCells: 2800,
     maxCenterRadius: 0.998,
-    targetAreaCount: 4,
-    minAreaCount: 4,
+    roomCount: 8,
+    minRoomSize: 12,
+    targetRoomSize: 15,
   },
 }
 
@@ -77,22 +82,9 @@ type CreateGrid45WorldOptions = {
   maxCenterRadius?: number
 }
 
-type RoomConnection = {
-  connectorId: number
-  targetRoomId: number
-}
-
 type SideSignal = {
   side: number
   outward: Vec2
-}
-
-type RootedFloorTree = {
-  graph: number[][]
-  parent: number[]
-  children: number[][]
-  depth: number[]
-  floorIds: number[]
 }
 
 type AreaPlan = {
@@ -113,6 +105,17 @@ type AreaEdgePlan = {
   color: KeyColor | null
 }
 
+type RoomLayout = {
+  cellKinds: CellKind[]
+  areas: AreaPlan[]
+  edges: AreaEdgePlan[]
+}
+
+type RoomLayoutAttempt = {
+  layout: RoomLayout | null
+  reason: string
+}
+
 type ProgressionLayout = {
   chipCellIds: number[]
   socketCellId: number
@@ -124,6 +127,12 @@ type ProgressionLayout = {
 type ProgressionAttempt = {
   layout: ProgressionLayout | null
   reason: string
+}
+
+type GateCandidate = {
+  gateCellId: number
+  anchorCellId: number
+  score: number
 }
 
 function rotatePoint(point: Vec2, angle: number): Vec2 {
@@ -147,6 +156,10 @@ function toUnitVector(a: Vec2, b: Vec2): Vec2 {
     x: b.x - a.x,
     y: b.y - a.y,
   })
+}
+
+function pointRadiusSq(point: Vec2): number {
+  return point.x * point.x + point.y * point.y
 }
 
 function mixSeed(seed: number, salt: number): number {
@@ -197,263 +210,15 @@ function assignDirectionSides(vertices: Vec2[], center: Vec2): DirectionMap<numb
   }
 }
 
-function computeParity(cells: MazeCell[]): number[] {
-  const parity = new Array(cells.length).fill(-1)
-  const queue: number[] = [0]
-  parity[0] = 0
-
-  while (queue.length > 0) {
-    const id = queue.shift()
-    if (id === undefined) break
-
-    const currentParity = parity[id]
-    const cell = cells[id]
-    for (const direction of directions) {
-      const nextId = cell.exits[direction]
-      if (nextId === null || parity[nextId] !== -1) continue
-      parity[nextId] = 1 - currentParity
-      queue.push(nextId)
-    }
-  }
-
-  return parity
-}
-
-function pickForwardRoom(
-  cells: MazeCell[],
-  parity: number[],
-  connectorId: number,
-  currentRoomId: number,
-  direction: Direction,
-): number | null {
-  const directTarget = cells[connectorId].exits[direction]
-  if (directTarget !== null && directTarget !== currentRoomId && parity[directTarget] === 0) return directTarget
-
-  let bestTarget: number | null = null
-  let bestScore = -Infinity
-  const connector = cells[connectorId]
-  const directionVector = directionVectors[direction]
-
-  for (const neighborId of Object.values(connector.exits)) {
-    if (neighborId === null || neighborId === currentRoomId || parity[neighborId] !== 0) continue
-    const score = dot(toUnitVector(connector.center, cells[neighborId].center), directionVector)
-    if (score > bestScore) {
-      bestScore = score
-      bestTarget = neighborId
-    }
-  }
-
-  return bestScore > 0 ? bestTarget : null
-}
-
-function buildRoomConnections(cells: MazeCell[], parity: number[]): Array<Partial<Record<Direction, RoomConnection>>> {
-  return cells.map((cell, roomId) => {
-    if (parity[roomId] !== 0) return {}
-
-    const connections: Partial<Record<Direction, RoomConnection>> = {}
-    for (const direction of directions) {
-      const connectorId = cell.exits[direction]
-      if (connectorId === null || parity[connectorId] !== 1) continue
-
-      const targetRoomId = pickForwardRoom(cells, parity, connectorId, roomId, direction)
-      if (targetRoomId === null) continue
-
-      connections[direction] = { connectorId, targetRoomId }
-    }
-
-    return connections
-  })
-}
-
-function carveFloorKinds(
-  cellCount: number,
-  roomConnections: Array<Partial<Record<Direction, RoomConnection>>>,
-  seed: number,
-): CellKind[] {
-  const rng = mulberry32(seed)
-  const kinds: CellKind[] = new Array(cellCount).fill('wall')
-  const visitedRooms = new Array(cellCount).fill(false)
-  const stack: number[] = [0]
-
-  visitedRooms[0] = true
-  kinds[0] = 'floor'
-
-  while (stack.length > 0) {
-    const roomId = stack[stack.length - 1]
-    const choices = directions.filter((direction) => {
-      const connection = roomConnections[roomId][direction]
-      return connection !== undefined && !visitedRooms[connection.targetRoomId]
-    })
-
-    if (choices.length === 0) {
-      stack.pop()
-      continue
-    }
-
-    const direction = choices[Math.floor(rng() * choices.length)]
-    const connection = roomConnections[roomId][direction]
-    if (!connection) continue
-
-    visitedRooms[connection.targetRoomId] = true
-    kinds[connection.connectorId] = 'floor'
-    kinds[connection.targetRoomId] = 'floor'
-    stack.push(connection.targetRoomId)
-  }
-
-  return kinds
-}
-
-function buildFloorGraph(cells: MazeCell[]): number[][] {
-  const graph = cells.map(() => [] as number[])
-
-  for (const cell of cells) {
-    if (cell.kind !== 'floor') continue
-
+function buildCellGraph(cells: Pick<MazeCell, 'id' | 'exits'>[]): number[][] {
+  return cells.map((cell) => {
+    const neighborIds = new Set<number>()
     for (const direction of directions) {
       const neighborId = cell.exits[direction]
-      if (neighborId === null || cells[neighborId].kind !== 'floor') continue
-      graph[cell.id].push(neighborId)
+      if (neighborId !== null) neighborIds.add(neighborId)
     }
-  }
-
-  return graph
-}
-
-function buildRootedFloorTree(cells: MazeCell[], startCellId: number): RootedFloorTree | null {
-  const graph = buildFloorGraph(cells)
-  const floorIds = cells.filter((cell) => cell.kind === 'floor').map((cell) => cell.id)
-  const parent = new Array(cells.length).fill(-1)
-  const depth = new Array(cells.length).fill(-1)
-  const children = cells.map(() => [] as number[])
-  const queue: number[] = [startCellId]
-  const visitedFloorIds: number[] = []
-
-  parent[startCellId] = -1
-  depth[startCellId] = 0
-
-  while (queue.length > 0) {
-    const id = queue.shift()
-    if (id === undefined) break
-
-    visitedFloorIds.push(id)
-    for (const neighborId of graph[id]) {
-      if (depth[neighborId] !== -1) continue
-      parent[neighborId] = id
-      depth[neighborId] = depth[id] + 1
-      children[id].push(neighborId)
-      queue.push(neighborId)
-    }
-  }
-
-  if (visitedFloorIds.length !== floorIds.length) return null
-
-  return {
-    graph,
-    parent,
-    children,
-    depth,
-    floorIds,
-  }
-}
-
-function buildPathToRoot(parent: number[], targetCellId: number): number[] {
-  const pathCellIds: number[] = []
-  let currentCellId = targetCellId
-
-  while (currentCellId !== -1) {
-    pathCellIds.push(currentCellId)
-    currentCellId = parent[currentCellId]
-  }
-
-  pathCellIds.reverse()
-  return pathCellIds
-}
-
-function findArticulationPoints(tree: RootedFloorTree): Set<number> {
-  const visited = new Array(tree.graph.length).fill(false)
-  const discovery = new Array(tree.graph.length).fill(-1)
-  const low = new Array(tree.graph.length).fill(-1)
-  const articulationIds = new Set<number>()
-  let time = 0
-
-  const visit = (cellId: number, parentCellId: number) => {
-    visited[cellId] = true
-    discovery[cellId] = time
-    low[cellId] = time
-    time += 1
-
-    let childCount = 0
-    for (const neighborId of tree.graph[cellId]) {
-      if (!visited[neighborId]) {
-        childCount += 1
-        visit(neighborId, cellId)
-        low[cellId] = Math.min(low[cellId], low[neighborId])
-        if (parentCellId !== -1 && low[neighborId] >= discovery[cellId]) {
-          articulationIds.add(cellId)
-        }
-      } else if (neighborId !== parentCellId) {
-        low[cellId] = Math.min(low[cellId], discovery[neighborId])
-      }
-    }
-
-    if (parentCellId === -1 && childCount > 1) articulationIds.add(cellId)
-  }
-
-  for (const floorId of tree.floorIds) {
-    if (!visited[floorId]) visit(floorId, -1)
-  }
-
-  return articulationIds
-}
-
-function buildRoutePlans(tree: RootedFloorTree, articulationIds: Set<number>): Array<{
-  targetCellId: number
-  pathCellIds: number[]
-  candidateGateIds: number[]
-}> {
-  const leafIds = tree.floorIds.filter((cellId) => tree.children[cellId].length === 0)
-  const candidateTargets = (leafIds.length > 0 ? leafIds : tree.floorIds)
-    .slice()
-    .sort((a, b) => tree.depth[b] - tree.depth[a] || a - b)
-    .slice(0, LEAF_CANDIDATE_LIMIT)
-
-  return candidateTargets.map((targetCellId) => {
-    const pathCellIds = buildPathToRoot(tree.parent, targetCellId)
-    return {
-      targetCellId,
-      pathCellIds,
-      candidateGateIds: pathCellIds.slice(1, -1).filter((cellId) => articulationIds.has(cellId)),
-    }
+    return [...neighborIds]
   })
-}
-
-function selectGateIds(candidateGateIds: number[], gateCount: number, seed: number): number[] | null {
-  if (candidateGateIds.length < gateCount) return null
-
-  const rng = mulberry32(seed)
-  const selectedIndexes: number[] = []
-  let previousIndex = -1
-
-  for (let slot = 0; slot < gateCount; slot += 1) {
-    const remainingSlots = gateCount - slot
-    const minIndex = previousIndex + 1
-    const maxIndex = candidateGateIds.length - remainingSlots
-    const center = (((slot + 1) * (candidateGateIds.length + 1)) / (gateCount + 1)) - 1
-    const spread = Math.max(1, Math.ceil(candidateGateIds.length / Math.max(4, gateCount * 2)))
-    let low = Math.max(minIndex, Math.floor(center - spread))
-    let high = Math.min(maxIndex, Math.ceil(center + spread))
-
-    if (low > high) {
-      low = minIndex
-      high = maxIndex
-    }
-
-    const chosenIndex = low + Math.floor(rng() * (high - low + 1))
-    selectedIndexes.push(chosenIndex)
-    previousIndex = chosenIndex
-  }
-
-  return selectedIndexes.map((index) => candidateGateIds[index])
 }
 
 function doorColorForAreaId(areaId: number): KeyColor {
@@ -461,73 +226,183 @@ function doorColorForAreaId(areaId: number): KeyColor {
   return DOOR_COLOR_SEQUENCE[Math.min(areaId - 1, DOOR_COLOR_SEQUENCE.length - 1)]
 }
 
-function buildAreaPlanFromGateIds(tree: RootedFloorTree, startCellId: number, gateCellIds: number[]): {
-  areas: AreaPlan[]
-  edges: AreaEdgePlan[]
-} {
-  const areaCount = gateCellIds.length + 1
-  const areaIdByCellId = new Array(tree.graph.length).fill(-1)
-  const gateAreaIdByCellId = new Map(gateCellIds.map((gateCellId, index) => [gateCellId, index + 1]))
-  const visitStack: Array<{ cellId: number; areaId: number }> = [{ cellId: startCellId, areaId: 0 }]
+function buildRoomTargetSizes(config: WorldSizeConfig, seed: number): number[] {
+  const rng = mulberry32(seed)
 
-  while (visitStack.length > 0) {
-    const next = visitStack.pop()
-    if (!next) break
+  return Array.from({ length: config.roomCount }, (_, roomId) => {
+    const jitter = Math.floor(rng() * 3) - 1
+    const bonus = roomId === 0 || roomId === config.roomCount - 1 ? 1 : 0
+    return Math.max(config.minRoomSize, config.targetRoomSize + jitter + bonus)
+  })
+}
 
-    const ownAreaId = gateAreaIdByCellId.get(next.cellId) ?? next.areaId
-    areaIdByCellId[next.cellId] = ownAreaId
-    for (let childIndex = tree.children[next.cellId].length - 1; childIndex >= 0; childIndex -= 1) {
-      visitStack.push({
-        cellId: tree.children[next.cellId][childIndex],
-        areaId: ownAreaId,
-      })
+function pickFrontierIndex(frontierCellIds: number[], cells: Pick<MazeCell, 'center'>[], rng: () => number): number {
+  let bestIndex = 0
+  let bestScore = -Infinity
+  const sampleCount = Math.min(frontierCellIds.length, FRONTIER_SAMPLE_COUNT)
+
+  for (let sample = 0; sample < sampleCount; sample += 1) {
+    const index = Math.floor(rng() * frontierCellIds.length)
+    const cellId = frontierCellIds[index]
+    const score = pointRadiusSq(cells[cellId].center) * 0.2 + rng()
+    if (score > bestScore) {
+      bestScore = score
+      bestIndex = index
     }
   }
 
-  const areas: AreaPlan[] = Array.from({ length: areaCount }, (_, areaId) => ({
-    id: areaId,
-    parentAreaId: areaId === 0 ? null : areaId - 1,
-    depth: areaId,
-    entryCellId: areaId === 0 ? startCellId : gateCellIds[areaId - 1],
-    cellIds: [],
-    childAreaIds: areaId + 1 < areaCount ? [areaId + 1] : [],
-  }))
-
-  for (const floorId of tree.floorIds) {
-    const areaId = areaIdByCellId[floorId]
-    if (areaId >= 0) areas[areaId].cellIds.push(floorId)
-  }
-
-  const edges: AreaEdgePlan[] = gateCellIds.map((gateCellId, index) => ({
-    fromAreaId: index,
-    toAreaId: index + 1,
-    gateCellId,
-    gateCellIds: [gateCellId],
-    gate: index + 1 === areaCount - 1 ? 'socket' : 'door',
-    color: index + 1 === areaCount - 1 ? null : doorColorForAreaId(index + 1),
-  }))
-
-  return {
-    areas,
-    edges,
-  }
+  return bestIndex
 }
 
-function validateSingleGateAreas(graph: number[][], areas: AreaPlan[], edges: AreaEdgePlan[]): string | null {
-  const areaIdByCellId = new Array(graph.length).fill(-1)
-  const edgeByToAreaId = new Map(edges.map((edge) => [edge.toAreaId, edge]))
+function canClaimRoomCell(
+  graph: number[][],
+  cellId: number,
+  roomId: number,
+  roomIdByCellId: number[],
+  gateCellIds: Set<number>,
+  allowedGateCellIds: Set<number>,
+): boolean {
+  if (roomIdByCellId[cellId] !== -1 || gateCellIds.has(cellId)) return false
+
+  for (const neighborId of graph[cellId]) {
+    const neighborRoomId = roomIdByCellId[neighborId]
+    if (neighborRoomId !== -1 && neighborRoomId !== roomId) return false
+    if (gateCellIds.has(neighborId) && !allowedGateCellIds.has(neighborId)) return false
+  }
+
+  return true
+}
+
+function growRoomCells(
+  graph: number[][],
+  cells: Pick<MazeCell, 'center'>[],
+  roomIdByCellId: number[],
+  gateCellIds: Set<number>,
+  roomId: number,
+  anchorCellId: number,
+  targetSize: number,
+  minSize: number,
+  entryGateCellId: number | null,
+  seed: number,
+): number[] | null {
+  const rng = mulberry32(seed)
+  const allowedGateCellIds = new Set<number>(entryGateCellId === null ? [] : [entryGateCellId])
+  const claimedCellIds: number[] = []
+  const frontierCellIds = [anchorCellId]
+  const frontierSet = new Set<number>([anchorCellId])
+
+  while (frontierCellIds.length > 0 && claimedCellIds.length < targetSize) {
+    const frontierIndex = pickFrontierIndex(frontierCellIds, cells, rng)
+    const [cellId] = frontierCellIds.splice(frontierIndex, 1)
+    frontierSet.delete(cellId)
+
+    if (!canClaimRoomCell(graph, cellId, roomId, roomIdByCellId, gateCellIds, allowedGateCellIds)) continue
+
+    roomIdByCellId[cellId] = roomId
+    claimedCellIds.push(cellId)
+
+    const neighborIds = graph[cellId].slice()
+    for (let index = neighborIds.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(rng() * (index + 1))
+      const temp = neighborIds[index]
+      neighborIds[index] = neighborIds[swapIndex]
+      neighborIds[swapIndex] = temp
+    }
+
+    for (const neighborId of neighborIds) {
+      if (roomIdByCellId[neighborId] !== -1 || gateCellIds.has(neighborId) || frontierSet.has(neighborId)) continue
+      frontierCellIds.push(neighborId)
+      frontierSet.add(neighborId)
+    }
+  }
+
+  if (claimedCellIds.length < minSize) {
+    for (const claimedCellId of claimedCellIds) roomIdByCellId[claimedCellId] = -1
+    return null
+  }
+
+  return claimedCellIds
+}
+
+function collectGateCandidates(
+  graph: number[][],
+  cells: Pick<MazeCell, 'center'>[],
+  parentRoomId: number,
+  nextRoomId: number,
+  parentRoomCellIds: number[],
+  roomIdByCellId: number[],
+  gateCellIds: Set<number>,
+  seed: number,
+): GateCandidate[] {
+  const rng = mulberry32(seed)
+  const candidates: GateCandidate[] = []
+  const seenPairs = new Set<string>()
+
+  for (const roomCellId of parentRoomCellIds) {
+    for (const gateCellId of graph[roomCellId]) {
+      if (roomIdByCellId[gateCellId] !== -1 || gateCellIds.has(gateCellId)) continue
+
+      let touchesParent = false
+      let invalidGate = false
+      for (const neighborId of graph[gateCellId]) {
+        if (gateCellIds.has(neighborId)) {
+          invalidGate = true
+          break
+        }
+
+        const neighborRoomId = roomIdByCellId[neighborId]
+        if (neighborRoomId === -1) continue
+        if (neighborRoomId !== parentRoomId) {
+          invalidGate = true
+          break
+        }
+        touchesParent = true
+      }
+
+      if (invalidGate || !touchesParent) continue
+
+      for (const anchorCellId of graph[gateCellId]) {
+        const pairKey = `${gateCellId}:${anchorCellId}`
+        if (seenPairs.has(pairKey)) continue
+        seenPairs.add(pairKey)
+
+        if (!canClaimRoomCell(graph, anchorCellId, nextRoomId, roomIdByCellId, gateCellIds, new Set([gateCellId]))) continue
+
+        candidates.push({
+          gateCellId,
+          anchorCellId,
+          score: pointRadiusSq(cells[anchorCellId].center) + pointRadiusSq(cells[gateCellId].center) * 0.25 + rng() * 0.1,
+        })
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score)
+  return candidates.slice(0, GATE_CANDIDATE_LIMIT)
+}
+
+function validateRoomLayout(
+  graph: number[][],
+  cellKinds: CellKind[],
+  areas: AreaPlan[],
+  edges: AreaEdgePlan[],
+): string | null {
+  const roomIdByCellId = new Array(graph.length).fill(-1)
+  const edgeByGateCellId = new Map(edges.map((edge) => [edge.gateCellId, edge]))
 
   for (const area of areas) {
     for (const cellId of area.cellIds) {
-      if (areaIdByCellId[cellId] !== -1) return 'duplicate-area-cell'
-      areaIdByCellId[cellId] = area.id
+      if (roomIdByCellId[cellId] !== -1) return 'duplicate-room-cell'
+      if (edgeByGateCellId.has(cellId)) return 'gate-inside-room'
+      if (cellKinds[cellId] !== 'floor') return 'room-cell-not-floor'
+      roomIdByCellId[cellId] = area.id
     }
   }
 
   for (const area of areas) {
-    if (area.cellIds.length === 0) return 'empty-area'
+    if (area.cellIds.length === 0) return 'empty-room'
 
-    const areaCellIds = new Set(area.cellIds)
+    const roomCellIds = new Set(area.cellIds)
     const queue: number[] = [area.entryCellId]
     const visited = new Set<number>([area.entryCellId])
 
@@ -536,93 +411,201 @@ function validateSingleGateAreas(graph: number[][], areas: AreaPlan[], edges: Ar
       if (cellId === undefined) break
 
       for (const neighborId of graph[cellId]) {
-        if (!areaCellIds.has(neighborId) || visited.has(neighborId)) continue
+        if (!roomCellIds.has(neighborId) || visited.has(neighborId)) continue
         visited.add(neighborId)
         queue.push(neighborId)
       }
     }
 
-    if (visited.size !== area.cellIds.length) return 'disconnected-area'
-  }
+    if (visited.size !== area.cellIds.length) return 'disconnected-room'
 
-  for (let areaId = 1; areaId < areas.length; areaId += 1) {
-    const edge = edgeByToAreaId.get(areaId)
-    if (!edge) return 'missing-gate-edge'
-    if (areaIdByCellId[edge.gateCellId] !== areaId) return 'gate-not-in-child'
-
-    let touchesParent = false
-    let touchesOwnArea = false
-    for (const neighborId of graph[edge.gateCellId]) {
-      if (areaIdByCellId[neighborId] === areaId - 1) touchesParent = true
-      if (areaIdByCellId[neighborId] === areaId) touchesOwnArea = true
-    }
-
-    if (!touchesParent || !touchesOwnArea) return 'broken-gate-bridge'
-  }
-
-  for (const area of areas) {
     for (const cellId of area.cellIds) {
       for (const neighborId of graph[cellId]) {
-        if (neighborId < cellId) continue
+        if (cellKinds[neighborId] === 'wall') continue
 
-        const fromAreaId = areaIdByCellId[cellId]
-        const toAreaId = areaIdByCellId[neighborId]
-        if (fromAreaId === -1 || toAreaId === -1) return 'unassigned-area-cell'
-        if (fromAreaId === toAreaId) continue
+        const neighborRoomId = roomIdByCellId[neighborId]
+        if (neighborRoomId === area.id) continue
+        if (neighborRoomId !== -1) return 'direct-room-adjacency'
 
-        const highAreaId = Math.max(fromAreaId, toAreaId)
-        const lowAreaId = Math.min(fromAreaId, toAreaId)
-        if (highAreaId !== lowAreaId + 1) return 'non-local-area-edge'
-
-        const gateCellId = edgeByToAreaId.get(highAreaId)?.gateCellId
-        if (gateCellId === undefined || (cellId !== gateCellId && neighborId !== gateCellId)) return 'gate-bypass-edge'
+        const gate = edgeByGateCellId.get(neighborId)
+        if (!gate || (gate.fromAreaId !== area.id && gate.toAreaId !== area.id)) return 'foreign-gate-touch'
       }
+    }
+  }
+
+  for (const edge of edges) {
+    if (cellKinds[edge.gateCellId] !== 'floor') return 'gate-not-floor'
+    if (roomIdByCellId[edge.gateCellId] !== -1) return 'gate-assigned-to-room'
+
+    const touchedRoomIds = new Set<number>()
+    for (const neighborId of graph[edge.gateCellId]) {
+      if (edgeByGateCellId.has(neighborId)) return 'adjacent-gates'
+      if (cellKinds[neighborId] === 'wall') continue
+
+      const neighborRoomId = roomIdByCellId[neighborId]
+      if (neighborRoomId === -1) return 'floating-gate'
+      touchedRoomIds.add(neighborRoomId)
+    }
+
+    if (!touchedRoomIds.has(edge.fromAreaId) || !touchedRoomIds.has(edge.toAreaId) || touchedRoomIds.size !== 2) {
+      return 'gate-room-mismatch'
     }
   }
 
   return null
 }
 
-function buildChokepointAreas(
-  tree: RootedFloorTree,
+function buildRoomLayout(
+  cells: Pick<MazeCell, 'center'>[],
+  graph: number[][],
   startCellId: number,
-  targetAreaCount: number,
-  minAreaCount: number,
+  config: WorldSizeConfig,
   seed: number,
-): { areas: AreaPlan[]; edges: AreaEdgePlan[] } | null {
-  const articulationIds = findArticulationPoints(tree)
-  const routePlans = buildRoutePlans(tree, articulationIds)
+): RoomLayoutAttempt {
+  const roomIdByCellId = new Array(cells.length).fill(-1)
+  const gateCellIds = new Set<number>()
+  const roomTargetSizes = buildRoomTargetSizes(config, mixSeed(seed, 1))
+  const areas: AreaPlan[] = []
+  const edges: AreaEdgePlan[] = []
 
-  for (const routePlan of routePlans) {
-    const maxAreaCount = Math.min(targetAreaCount, routePlan.candidateGateIds.length + 1)
-    for (let areaCount = maxAreaCount; areaCount >= minAreaCount; areaCount -= 1) {
-      const gateCount = areaCount - 1
+  const startRoomCellIds = growRoomCells(
+    graph,
+    cells,
+    roomIdByCellId,
+    gateCellIds,
+    0,
+    startCellId,
+    roomTargetSizes[0],
+    config.minRoomSize,
+    null,
+    mixSeed(seed, 2),
+  )
+  if (!startRoomCellIds) return { layout: null, reason: 'start-room' }
 
-      for (let attempt = 0; attempt < PATH_LAYOUT_ATTEMPTS; attempt += 1) {
-        const gateCellIds = selectGateIds(
-          routePlan.candidateGateIds,
-          gateCount,
-          mixSeed(seed, routePlan.targetCellId * 131 + areaCount * 17 + attempt + 1),
-        )
-        if (!gateCellIds) continue
+  areas.push({
+    id: 0,
+    parentAreaId: null,
+    depth: 0,
+    entryCellId: startCellId,
+    cellIds: startRoomCellIds,
+    childAreaIds: config.roomCount > 1 ? [1] : [],
+  })
 
-        const layout = buildAreaPlanFromGateIds(tree, startCellId, gateCellIds)
-        if (validateSingleGateAreas(tree.graph, layout.areas, layout.edges) !== null) continue
+  const extend = (parentRoomId: number, nextRoomId: number): boolean => {
+    if (nextRoomId >= config.roomCount) return true
 
-        return layout
+    const gateCandidates = collectGateCandidates(
+      graph,
+      cells,
+      parentRoomId,
+      nextRoomId,
+      areas[parentRoomId].cellIds,
+      roomIdByCellId,
+      gateCellIds,
+      mixSeed(seed, nextRoomId * 17 + parentRoomId + 1),
+    )
+    if (gateCandidates.length === 0) return false
+
+    for (let candidateIndex = 0; candidateIndex < gateCandidates.length; candidateIndex += 1) {
+      const candidate = gateCandidates[candidateIndex]
+      gateCellIds.add(candidate.gateCellId)
+
+      const roomCellIds = growRoomCells(
+        graph,
+        cells,
+        roomIdByCellId,
+        gateCellIds,
+        nextRoomId,
+        candidate.anchorCellId,
+        roomTargetSizes[nextRoomId],
+        config.minRoomSize,
+        candidate.gateCellId,
+        mixSeed(seed, nextRoomId * 131 + candidateIndex + 1),
+      )
+
+      if (!roomCellIds) {
+        gateCellIds.delete(candidate.gateCellId)
+        continue
       }
+
+      areas.push({
+        id: nextRoomId,
+        parentAreaId: parentRoomId,
+        depth: nextRoomId,
+        entryCellId: candidate.anchorCellId,
+        cellIds: roomCellIds,
+        childAreaIds: nextRoomId + 1 < config.roomCount ? [nextRoomId + 1] : [],
+      })
+      edges.push({
+        fromAreaId: parentRoomId,
+        toAreaId: nextRoomId,
+        gateCellId: candidate.gateCellId,
+        gateCellIds: [candidate.gateCellId],
+        gate: nextRoomId === config.roomCount - 1 ? 'socket' : 'door',
+        color: nextRoomId === config.roomCount - 1 ? null : doorColorForAreaId(nextRoomId),
+      })
+
+      if (extend(nextRoomId, nextRoomId + 1)) return true
+
+      edges.pop()
+      areas.pop()
+      for (const roomCellId of roomCellIds) roomIdByCellId[roomCellId] = -1
+      gateCellIds.delete(candidate.gateCellId)
+    }
+
+    return false
+  }
+
+  if (!extend(0, 1)) return { layout: null, reason: 'room-chain' }
+
+  const cellKinds: CellKind[] = new Array(cells.length).fill('wall')
+  for (const area of areas) {
+    for (const cellId of area.cellIds) cellKinds[cellId] = 'floor'
+  }
+  for (const edge of edges) cellKinds[edge.gateCellId] = 'floor'
+
+  const validationFailure = validateRoomLayout(graph, cellKinds, areas, edges)
+  if (validationFailure) return { layout: null, reason: validationFailure }
+
+  return {
+    layout: {
+      cellKinds,
+      areas,
+      edges,
+    },
+    reason: 'ok',
+  }
+}
+
+function makeRoomCandidateOrder(
+  graph: number[][],
+  roomCellIds: number[],
+  entryCellId: number,
+  cells: Pick<MazeCell, 'center'>[],
+  seed: number,
+): number[] {
+  const roomCellIdSet = new Set(roomCellIds)
+  const distanceByCellId = new Array(cells.length).fill(-1)
+  const queue: number[] = [entryCellId]
+  distanceByCellId[entryCellId] = 0
+
+  while (queue.length > 0) {
+    const cellId = queue.shift()
+    if (cellId === undefined) break
+
+    for (const neighborId of graph[cellId]) {
+      if (!roomCellIdSet.has(neighborId) || distanceByCellId[neighborId] !== -1) continue
+      distanceByCellId[neighborId] = distanceByCellId[cellId] + 1
+      queue.push(neighborId)
     }
   }
 
-  return null
-}
-
-function makeAreaCandidateOrder(area: AreaPlan, depth: number[], rng: () => number): number[] {
-  return area.cellIds
-    .filter((cellId) => cellId !== area.entryCellId)
+  const rng = mulberry32(seed)
+  return roomCellIds
+    .filter((cellId) => cellId !== entryCellId)
     .map((cellId) => ({
       cellId,
-      score: depth[cellId] + rng() * 0.5,
+      score: distanceByCellId[cellId] + pointRadiusSq(cells[cellId].center) * 0.15 + rng() * 0.5,
     }))
     .sort((a, b) => b.score - a.score)
     .map((entry) => entry.cellId)
@@ -639,7 +622,7 @@ function validateAreaDag(nodes: AreaDagNode[], edges: AreaDagEdge[]): AreaDag['v
   if (!rootNode || !finalNode) {
     return {
       passed: false,
-      summary: 'Missing start or final area',
+      summary: 'Missing start or final room',
       steps: [],
     }
   }
@@ -658,7 +641,7 @@ function validateAreaDag(nodes: AreaDagNode[], edges: AreaDagEdge[]): AreaDag['v
     if (!fromNode || !toNode || toNode.depth <= fromNode.depth) {
       return {
         passed: false,
-        summary: 'Area graph is not acyclic',
+        summary: 'Room graph is not acyclic',
         steps: [],
       }
     }
@@ -678,11 +661,11 @@ function validateAreaDag(nodes: AreaDagNode[], edges: AreaDagEdge[]): AreaDag['v
     accessibleAreaIds.add(areaId)
     if (node.kind !== 'final') {
       collectedChipAreaIds.add(areaId)
-      steps.push(`Area ${areaId}: collected ${node.chipCellIds.length} chip${node.chipCellIds.length === 1 ? '' : 's'}`)
+      steps.push(`Room ${areaId}: collected ${node.chipCellIds.length} chip${node.chipCellIds.length === 1 ? '' : 's'}`)
     }
     for (const color of node.keyColors) {
       inventory[color] += 1
-      steps.push(`Area ${areaId}: gained ${color} key`)
+      steps.push(`Room ${areaId}: gained ${color} key`)
     }
   }
 
@@ -697,12 +680,12 @@ function validateAreaDag(nodes: AreaDagNode[], edges: AreaDagEdge[]): AreaDag['v
 
       if (edge.gate === 'socket') {
         if (collectedChipAreaIds.size !== chipAreaIds.size) continue
-        steps.push(`Area ${edge.fromAreaId}: opened socket to area ${edge.toAreaId}`)
+        steps.push(`Room ${edge.fromAreaId}: opened socket to room ${edge.toAreaId}`)
       } else {
         const color = edge.color
         if (!color || inventory[color] < 1) continue
         if (color !== 'green') inventory[color] -= 1
-        steps.push(`Area ${edge.fromAreaId}: opened ${formatGateLabel(edge)} to area ${edge.toAreaId}`)
+        steps.push(`Room ${edge.fromAreaId}: opened ${formatGateLabel(edge)} to room ${edge.toAreaId}`)
       }
 
       collectArea(edge.toAreaId)
@@ -713,33 +696,31 @@ function validateAreaDag(nodes: AreaDagNode[], edges: AreaDagEdge[]): AreaDag['v
   const passed = accessibleAreaIds.has(finalNode.id)
   return {
     passed,
-    summary: passed ? `Validated ${nodes.length} areas and ${edges.length} gates` : `Failed to reach final area ${finalNode.id}`,
+    summary: passed ? `Validated ${nodes.length} rooms and ${edges.length} gates` : `Failed to reach final room ${finalNode.id}`,
     steps,
   }
 }
 
-function buildProgressionFromAreas(
-  cells: MazeCell[],
-  tree: RootedFloorTree,
-  areas: AreaPlan[],
-  edges: AreaEdgePlan[],
+function buildProgressionFromRoomLayout(
+  cells: Pick<MazeCell, 'center'>[],
+  graph: number[][],
+  roomLayout: RoomLayout,
   seed: number,
 ): ProgressionAttempt {
-  const boundaryFailure = validateSingleGateAreas(tree.graph, areas, edges)
+  const boundaryFailure = validateRoomLayout(graph, roomLayout.cellKinds, roomLayout.areas, roomLayout.edges)
   if (boundaryFailure) {
     return { layout: null, reason: boundaryFailure }
   }
 
-  const finalAreaId = areas.length - 1
+  const finalAreaId = roomLayout.areas.length - 1
   const cellFeatures: CellFeature[] = new Array(cells.length).fill('none')
   const chipCellIds: number[] = []
-  const chipCellIdsByArea = areas.map(() => [] as number[])
-  const keyColorsByArea = areas.map(() => [] as KeyColor[])
-  const plannedKeysByArea = areas.map(() => [] as KeyColor[])
-  const reservedCellIdsByArea = areas.map((area) => new Set(area.id === 0 ? [area.entryCellId] : [area.entryCellId]))
+  const chipCellIdsByArea = roomLayout.areas.map(() => [] as number[])
+  const keyColorsByArea = roomLayout.areas.map(() => [] as KeyColor[])
+  const plannedKeysByArea = roomLayout.areas.map(() => [] as KeyColor[])
   let hasGreenKey = false
 
-  for (const edge of edges) {
+  for (const edge of roomLayout.edges) {
     if (edge.gate === 'door' && edge.color !== null) {
       cellFeatures[edge.gateCellId] = featureForDoor(edge.color)
       if (edge.color === 'green') {
@@ -750,25 +731,18 @@ function buildProgressionFromAreas(
     }
   }
 
-  const rng = mulberry32(mixSeed(seed, 37))
-  const socketCellId = edges.find((edge) => edge.gate === 'socket')?.gateCellId ?? -1
-  if (socketCellId < 0) {
-    return { layout: null, reason: 'missing-socket' }
-  }
+  const socketCellId = roomLayout.edges.find((edge) => edge.gate === 'socket')?.gateCellId ?? -1
+  if (socketCellId < 0) return { layout: null, reason: 'missing-socket' }
   cellFeatures[socketCellId] = 'socket'
+
   let exitCellId = -1
 
-  for (const area of areas) {
-    const candidates = makeAreaCandidateOrder(area, tree.depth, rng).filter(
-      (cellId) => !reservedCellIdsByArea[area.id].has(cellId),
-    )
+  for (const area of roomLayout.areas) {
+    const candidates = makeRoomCandidateOrder(graph, area.cellIds, area.entryCellId, cells, mixSeed(seed, area.id + 1))
 
     if (area.id === finalAreaId) {
-      const exitCandidate = candidates.shift()
-      if (exitCandidate === undefined) {
-        return { layout: null, reason: 'final-area-too-small' }
-      }
-
+      const exitCandidate = candidates[0]
+      if (exitCandidate === undefined) return { layout: null, reason: 'final-room-too-small' }
       exitCellId = exitCandidate
       cellFeatures[exitCellId] = 'exit'
       continue
@@ -776,33 +750,28 @@ function buildProgressionFromAreas(
 
     const chipCount = 1
     const requiredCells = chipCount + plannedKeysByArea[area.id].length
-    if (candidates.length < requiredCells) {
-      return { layout: null, reason: 'area-capacity' }
-    }
+    if (candidates.length < requiredCells) return { layout: null, reason: 'room-capacity' }
 
     for (let chipIndex = 0; chipIndex < chipCount; chipIndex += 1) {
-      const chipCellId = candidates.shift()
+      const chipCellId = candidates[chipIndex]
       if (chipCellId === undefined) return { layout: null, reason: 'chip-placement' }
-
       cellFeatures[chipCellId] = 'chip'
       chipCellIds.push(chipCellId)
       chipCellIdsByArea[area.id].push(chipCellId)
     }
 
-    for (const color of plannedKeysByArea[area.id]) {
-      const keyCellId = candidates.shift()
-      if (keyCellId === undefined) return { layout: null, reason: 'key-placement' }
-
+    for (let keyIndex = 0; keyIndex < plannedKeysByArea[area.id].length; keyIndex += 1) {
+      const keyCellId = candidates[chipCount + keyIndex]
+      const color = plannedKeysByArea[area.id][keyIndex]
+      if (keyCellId === undefined || color === undefined) return { layout: null, reason: 'key-placement' }
       cellFeatures[keyCellId] = featureForKey(color)
       keyColorsByArea[area.id].push(color)
     }
   }
 
-  if (exitCellId < 0) {
-    return { layout: null, reason: 'missing-exit' }
-  }
+  if (exitCellId < 0) return { layout: null, reason: 'missing-exit' }
 
-  const areaDagNodes: AreaDagNode[] = areas.map((area) => ({
+  const areaDagNodes: AreaDagNode[] = roomLayout.areas.map((area) => ({
     id: area.id,
     depth: area.depth,
     entryCellId: area.entryCellId,
@@ -812,7 +781,7 @@ function buildProgressionFromAreas(
     kind: area.id === 0 ? 'start' : area.id === finalAreaId ? 'final' : 'normal',
   }))
 
-  const areaDagEdges: AreaDagEdge[] = edges.map((edge) => ({
+  const areaDagEdges: AreaDagEdge[] = roomLayout.edges.map((edge) => ({
     fromAreaId: edge.fromAreaId,
     toAreaId: edge.toAreaId,
     gateCellId: edge.gateCellId,
@@ -824,12 +793,10 @@ function buildProgressionFromAreas(
   const dagValidation = validateAreaDag(areaDagNodes, areaDagEdges)
   const validation: AreaDag['validation'] = dagValidation.passed ? {
     passed: true,
-    summary: `Validated ${areaDagNodes.length} BFS areas and ${areaDagEdges.length} single-cell gates`,
-    steps: ['Layout: every area transition is a single gate cell on the live map', ...dagValidation.steps],
+    summary: `Validated ${areaDagNodes.length} rooms and ${areaDagEdges.length} gates`,
+    steps: ['Layout: rooms are sealed by walls except for single-tile gates', ...dagValidation.steps],
   } : dagValidation
-  if (!validation.passed) {
-    return { layout: null, reason: 'dag-validation' }
-  }
+  if (!validation.passed) return { layout: null, reason: 'dag-validation' }
 
   return {
     reason: 'ok',
@@ -845,25 +812,6 @@ function buildProgressionFromAreas(
       },
     },
   }
-}
-
-function buildProgressionLayout(
-  cells: MazeCell[],
-  startCellId: number,
-  seed: number,
-  config: WorldSizeConfig,
-): ProgressionAttempt {
-  const tree = buildRootedFloorTree(cells, startCellId)
-  if (!tree) {
-    return { layout: null, reason: 'invalid-floor-tree' }
-  }
-
-  const chokepointAreas = buildChokepointAreas(tree, startCellId, config.targetAreaCount, config.minAreaCount, seed)
-  if (!chokepointAreas) {
-    return { layout: null, reason: 'area-layout' }
-  }
-
-  return buildProgressionFromAreas(cells, tree, chokepointAreas.areas, chokepointAreas.edges, mixSeed(seed, 101))
 }
 
 function rotateCell(cell: HyperCell): Pick<MazeCell, 'id' | 'center' | 'vertices'> {
@@ -906,20 +854,19 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
     }
   })
 
-  const parity = computeParity(draftCells)
-  const roomConnections = buildRoomConnections(draftCells, parity)
+  const graph = buildCellGraph(draftCells)
   const startCellId = 0
   const failureCounts = new Map<string, number>()
 
   for (let attempt = 0; attempt < WORLD_GENERATION_ATTEMPTS; attempt += 1) {
     const attemptSeed = mixSeed(options.seed, attempt + 1)
-    const kinds = carveFloorKinds(draftCells.length, roomConnections, mixSeed(attemptSeed, 1))
-    const cells = draftCells.map((cell) => ({
-      ...cell,
-      kind: kinds[cell.id],
-      feature: 'none' as const,
-    }))
-    const progression = buildProgressionLayout(cells, startCellId, mixSeed(attemptSeed, 2), config)
+    const roomLayout = buildRoomLayout(draftCells, graph, startCellId, config, attemptSeed)
+    if (!roomLayout.layout) {
+      failureCounts.set(roomLayout.reason, (failureCounts.get(roomLayout.reason) ?? 0) + 1)
+      continue
+    }
+
+    const progression = buildProgressionFromRoomLayout(draftCells, graph, roomLayout.layout, mixSeed(attemptSeed, 401))
     if (!progression.layout) {
       failureCounts.set(progression.reason, (failureCounts.get(progression.reason) ?? 0) + 1)
       continue
@@ -931,8 +878,9 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
       socketCellId: progression.layout.socketCellId,
       exitCellId: progression.layout.exitCellId,
       areaDag: progression.layout.areaDag,
-      cells: cells.map((cell) => ({
+      cells: draftCells.map((cell) => ({
         ...cell,
+        kind: roomLayout.layout?.cellKinds[cell.id] ?? 'wall',
         feature: progression.layout?.cellFeatures[cell.id] ?? 'none',
       })),
     }
@@ -941,5 +889,5 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
   const failureSummary = Array.from(failureCounts.entries())
     .map(([reason, count]) => `${reason}:${count}`)
     .join(', ')
-  throw new Error(`Failed to generate a solvable hyperbolic level (${failureSummary})`)
+  throw new Error(`Failed to generate a room-based hyperbolic level (${failureSummary})`)
 }
