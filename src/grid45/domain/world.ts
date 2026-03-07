@@ -33,43 +33,49 @@ type WorldSizeConfig = {
   roomCount: number
   minRoomSize: number
   targetRoomSize: number
+  targetCoverage: number
 }
 
 const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
   tiny: {
     maxCells: 760,
     maxCenterRadius: 0.994,
-    roomCount: 5,
+    roomCount: 6,
     minRoomSize: 5,
     targetRoomSize: 8,
+    targetCoverage: 0.18,
   },
   small: {
     maxCells: 980,
     maxCenterRadius: 0.995,
-    roomCount: 6,
+    roomCount: 8,
     minRoomSize: 6,
     targetRoomSize: 9,
+    targetCoverage: 0.2,
   },
   medium: {
     maxCells: 1700,
     maxCenterRadius: 0.996,
-    roomCount: 8,
+    roomCount: 10,
     minRoomSize: 7,
     targetRoomSize: 10,
+    targetCoverage: 0.22,
   },
   large: {
     maxCells: 2300,
     maxCenterRadius: 0.997,
-    roomCount: 10,
+    roomCount: 12,
     minRoomSize: 8,
     targetRoomSize: 11,
+    targetCoverage: 0.24,
   },
   huge: {
     maxCells: 3000,
     maxCenterRadius: 0.998,
-    roomCount: 12,
+    roomCount: 14,
     minRoomSize: 9,
     targetRoomSize: 12,
+    targetCoverage: 0.26,
   },
 }
 
@@ -671,36 +677,58 @@ function findExpandableRoomId(
   return roomId
 }
 
-function expandRoomsToFillSpace(
+function countPlacedFloorCells(areas: AreaPlan[], edges: AreaEdgePlan[]): number {
+  let floorCount = edges.length
+  for (const area of areas) floorCount += area.cellIds.length
+  return floorCount
+}
+
+function expandRoomsToCoverage(
   graph: number[][],
   cells: Pick<MazeCell, 'center'>[],
   areas: AreaPlan[],
   edges: AreaEdgePlan[],
   roomIdByCellId: number[],
+  targetCoverage: number,
   seed: number,
 ): AreaPlan[] {
   const rng = mulberry32(seed)
   const edgeByGateCellId = new Map(edges.map((edge) => [edge.gateCellId, edge]))
+  const targetFloorCount = Math.max(
+    countPlacedFloorCells(areas, edges),
+    Math.floor(graph.length * targetCoverage),
+  )
+  let floorCount = countPlacedFloorCells(areas, edges)
+  const roomSizes = areas.map((area) => area.cellIds.length)
   let changed = true
 
-  while (changed) {
+  while (changed && floorCount < targetFloorCount) {
     changed = false
-    const candidates: Array<{ cellId: number; score: number }> = []
+    const candidates: Array<{ cellId: number; roomId: number; score: number }> = []
 
     for (let cellId = 0; cellId < roomIdByCellId.length; cellId += 1) {
-      if (findExpandableRoomId(graph, cellId, roomIdByCellId, edgeByGateCellId) === null) continue
+      const roomId = findExpandableRoomId(graph, cellId, roomIdByCellId, edgeByGateCellId)
+      if (roomId === null) continue
       candidates.push({
         cellId,
-        score: pointRadiusSq(cells[cellId].center) * 0.35 + rng(),
+        roomId,
+        score:
+          pointRadiusSq(cells[cellId].center) * 0.2 +
+          rng() * 0.4 -
+          roomSizes[roomId] * 0.03,
       })
     }
 
     candidates.sort((a, b) => b.score - a.score)
 
     for (const candidate of candidates) {
+      if (floorCount >= targetFloorCount) break
+
       const roomId = findExpandableRoomId(graph, candidate.cellId, roomIdByCellId, edgeByGateCellId)
       if (roomId === null) continue
       roomIdByCellId[candidate.cellId] = roomId
+      roomSizes[roomId] += 1
+      floorCount += 1
       changed = true
     }
   }
@@ -830,12 +858,13 @@ function buildRoomLayout(
 
   if (!placeRoom(0)) return { layout: null, reason: 'room-branching' }
 
-  const placedAreas = expandRoomsToFillSpace(
+  const placedAreas = expandRoomsToCoverage(
     graph,
     cells,
     areas.filter((area): area is AreaPlan => area !== undefined),
     edges,
     roomIdByCellId,
+    config.targetCoverage,
     mixSeed(seed, 977),
   )
   const cellKinds: CellKind[] = new Array(cells.length).fill('wall')
