@@ -53,6 +53,7 @@ body {
   position: absolute;
   top: 16px;
   left: 16px;
+  z-index: 2;
   max-width: min(360px, calc(100% - 32px));
   padding: 16px 18px;
   border: 1px solid rgba(241, 234, 216, 0.16);
@@ -86,8 +87,20 @@ body {
   color: #f6efde;
 }
 
+.grid45Toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  color: rgba(241, 234, 216, 0.92);
+  font-size: 14px;
+}
+
+.grid45Toggle input {
+  margin: 0;
+}
+
 .grid45Button {
-  margin-top: 14px;
   padding: 10px 14px;
   border: 1px solid rgba(200, 169, 107, 0.35);
   border-radius: 999px;
@@ -99,4 +112,144 @@ body {
 
 .grid45Button:hover {
   background: rgba(200, 169, 107, 0.2);
+}
+
+.grid45Controls {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.grid45SelectLabel {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(241, 234, 216, 0.9);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid45Select {
+  min-width: 130px;
+  padding: 10px 12px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.9);
+  color: inherit;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.grid45DagPanel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  width: min(460px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 18px;
+  background: rgba(7, 11, 15, 0.84);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(16px);
+  overflow: hidden;
+}
+
+.grid45DagHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.grid45DagTitle {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.grid45DagBadge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.grid45DagBadgePass {
+  background: rgba(117, 217, 143, 0.16);
+  color: #9ff0b1;
+}
+
+.grid45DagBadgeFail {
+  background: rgba(255, 120, 120, 0.16);
+  color: #ff9b9b;
+}
+
+.grid45DagSummary {
+  margin-top: 8px;
+  color: rgba(241, 234, 216, 0.88);
+  font-size: 14px;
+}
+
+.grid45DagCanvasWrap {
+  margin-top: 12px;
+  border-radius: 14px;
+  background: rgba(12, 17, 23, 0.72);
+  overflow: auto;
+}
+
+.grid45DagCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.grid45DagEdgeText {
+  fill: #f1ead8;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.grid45DagNodeTitle {
+  fill: #f7f0de;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.grid45DagNodeMeta {
+  fill: rgba(241, 234, 216, 0.84);
+  font-size: 10px;
+}
+
+.grid45DagSteps {
+  margin-top: 12px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(241, 234, 216, 0.86);
+}
+
+.grid45DagStep + .grid45DagStep {
+  margin-top: 4px;
+}
+
+@media (max-width: 980px) {
+  .grid45DagPanel {
+    top: auto;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-height: 48vh;
+  }
 }

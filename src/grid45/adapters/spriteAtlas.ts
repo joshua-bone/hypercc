@@ -1,4 +1,4 @@
-import type { CellFeature, CellKind, Direction } from '../domain/model'
+import type { CellFeature, CellKind, Direction, KeyColor } from '../domain/model'
 
 const TILE_SIZE = 32
 const DEFAULT_TILESET_URL = `${import.meta.env.BASE_URL}artwork/tilesets/default.bmp`
@@ -12,6 +12,8 @@ export type Grid45Tileset = {
   tileSize: number
   tiles: Record<CellKind, HTMLCanvasElement>
   features: Record<Exclude<CellFeature, 'none'>, HTMLCanvasElement>
+  keys: Record<KeyColor, HTMLCanvasElement>
+  doors: Record<KeyColor, HTMLCanvasElement>
   playerSprites: Record<Direction, HTMLCanvasElement>
 }
 
@@ -20,6 +22,20 @@ const playerTileRows: Record<Direction, number> = {
   west: 14,
   south: 15,
   east: 16,
+}
+
+const keyTileRows: Record<KeyColor, number> = {
+  blue: 5,
+  red: 6,
+  green: 7,
+  yellow: 8,
+}
+
+const doorTileRows: Record<KeyColor, number> = {
+  blue: 7,
+  red: 8,
+  green: 9,
+  yellow: 10,
 }
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -84,6 +100,26 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       chip: drawTile(image, { col: 1, row: 3 }),
       socket: drawTile(image, { col: 3, row: 3 }),
       exit: drawTile(image, { col: 2, row: 6 }),
+      'key-blue': drawTile(image, { col: 7, row: keyTileRows.blue }),
+      'key-red': drawTile(image, { col: 7, row: keyTileRows.red }),
+      'key-green': drawTile(image, { col: 7, row: keyTileRows.green }),
+      'key-yellow': drawTile(image, { col: 7, row: keyTileRows.yellow }),
+      'door-blue': drawTile(image, { col: 2, row: doorTileRows.blue }),
+      'door-red': drawTile(image, { col: 2, row: doorTileRows.red }),
+      'door-green': drawTile(image, { col: 2, row: doorTileRows.green }),
+      'door-yellow': drawTile(image, { col: 2, row: doorTileRows.yellow }),
+    },
+    keys: {
+      blue: drawTile(image, { col: 7, row: keyTileRows.blue }),
+      red: drawTile(image, { col: 7, row: keyTileRows.red }),
+      green: drawTile(image, { col: 7, row: keyTileRows.green }),
+      yellow: drawTile(image, { col: 7, row: keyTileRows.yellow }),
+    },
+    doors: {
+      blue: drawTile(image, { col: 2, row: doorTileRows.blue }),
+      red: drawTile(image, { col: 2, row: doorTileRows.red }),
+      green: drawTile(image, { col: 2, row: doorTileRows.green }),
+      yellow: drawTile(image, { col: 2, row: doorTileRows.yellow }),
     },
     playerSprites: {
       north: applyMask(drawTile(image, { col: 10, row: playerTileRows.north }), drawTile(image, { col: 13, row: playerTileRows.north })),

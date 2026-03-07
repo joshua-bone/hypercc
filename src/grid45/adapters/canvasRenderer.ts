@@ -1,5 +1,6 @@
 import { geodesicPolyline } from '../../hyper/geodesic'
 import { toCameraView } from '../domain/camera'
+import { doorColorFromFeature, keyColorFromFeature } from '../domain/model'
 import type { Grid45Tileset } from './spriteAtlas'
 import type { GameState, MazeCell } from '../domain/model'
 
@@ -103,27 +104,50 @@ function baseFillForCell(kind: MazeCell['kind']): string {
   return kind === 'floor' ? '#bebebe' : '#9c9c9c'
 }
 
+function featureIsVisible(
+  cell: MazeCell,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'>,
+): boolean {
+  if (cell.feature === 'none') return false
+  if (cell.feature === 'chip') return state.remainingChipCellIds.has(cell.id)
+  if (cell.feature === 'socket') return !state.socketCleared
+  if (keyColorFromFeature(cell.feature) !== null) return !state.collectedKeyCellIds.has(cell.id)
+  if (doorColorFromFeature(cell.feature) !== null) return !state.openedDoorCellIds.has(cell.id)
+  return true
+}
+
 function featureFillForCell(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'>,
 ): string | null {
-  if (cell.feature === 'chip' && state.remainingChipCellIds.has(cell.id)) return '#e0c15b'
-  if (cell.feature === 'socket') return state.socketCleared ? null : '#5ea0c6'
+  if (!featureIsVisible(cell, state)) return null
+  if (cell.feature === 'chip') return '#e0c15b'
+  if (cell.feature === 'socket') return '#5ea0c6'
   if (cell.feature === 'exit') return '#6cb774'
+
+  const keyColor = keyColorFromFeature(cell.feature)
+  if (keyColor === 'blue') return '#6cb7ff'
+  if (keyColor === 'red') return '#ff7878'
+  if (keyColor === 'green') return '#75d98f'
+  if (keyColor === 'yellow') return '#f2d466'
+
+  const doorColor = doorColorFromFeature(cell.feature)
+  if (doorColor === 'blue') return '#3e6b99'
+  if (doorColor === 'red') return '#9a4747'
+  if (doorColor === 'green') return '#457653'
+  if (doorColor === 'yellow') return '#9d8340'
+
   return null
 }
 
 function featureSpriteForCell(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'>,
   tileset: Grid45Tileset,
 ): CanvasImageSource | null {
-  if (cell.feature === 'chip') {
-    return state.remainingChipCellIds.has(cell.id) ? tileset.features.chip : null
-  }
-  if (cell.feature === 'socket') return state.socketCleared ? null : tileset.features.socket
-  if (cell.feature === 'exit') return tileset.features.exit
-  return null
+  if (!featureIsVisible(cell, state)) return null
+  if (cell.feature === 'none') return null
+  return tileset.features[cell.feature]
 }
 
 function drawCellSprite(
