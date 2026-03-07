@@ -1,12 +1,6 @@
 # hypercc
 
-Static React/TypeScript demo: a hyperbolic (Poincaré disk) 2D maze you can explore with the arrow keys.
-
-## Demos
-
-- `/`: defaults to the tick-based `{4,5}` hyperbolic cell maze and includes a demo switcher
-- `/grid45.html`: direct entry that also opens with the `{4,5}` grid selected
-- `#line`: hash target for the original continuous wall-rendered hyperbolic maze
+Static React/TypeScript demo: a tick-based `{4,5}` hyperbolic cell maze you explore in the Poincare disk.
 
 ## Dev
 
@@ -15,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Then open either `/` or `/grid45.html`.
+Then open `/`.
 
 ## Build
 
@@ -24,4 +18,10 @@ npm run build
 npm run preview
 ```
 
-Controls: arrow keys to move, `R` to regenerate.
+## Deploy
+
+Push to `main` and GitHub Actions will publish the site to GitHub Pages:
+
+`https://joshua-bone.github.io/hypercc/`
+
+Controls: arrow keys or WASD to move. Use the `Regenerate Maze` button to build a new level.

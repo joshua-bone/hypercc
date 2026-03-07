@@ -1,7 +1,7 @@
 import type { CellFeature, CellKind, Direction } from '../domain/model'
 
 const TILE_SIZE = 32
-const DEFAULT_TILESET_URL = '/artwork/tilesets/default.bmp'
+const DEFAULT_TILESET_URL = `${import.meta.env.BASE_URL}artwork/tilesets/default.bmp`
 
 type TileLocation = {
   col: number

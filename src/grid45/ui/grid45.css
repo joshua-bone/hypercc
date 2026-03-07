@@ -71,14 +71,6 @@ body {
   text-transform: uppercase;
 }
 
-.grid45Title {
-  margin-bottom: 10px;
-  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-}
-
 .grid45Line,
 .grid45Metrics {
   font-size: 14px;

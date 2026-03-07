@@ -37,7 +37,6 @@ export default function Grid45App() {
   const totalChips = snapshot.world.chipCellIds.length
   const chipsRemaining = snapshot.remainingChipCellIds.size
   const chipsCollected = totalChips - chipsRemaining
-  const socketStatus = snapshot.socketCleared ? 'cleared' : chipsRemaining === 0 ? 'open' : 'locked'
 
   useEffect(() => {
     let active = true
@@ -98,15 +97,12 @@ export default function Grid45App() {
       <canvas ref={canvasRef} className="grid45Canvas" />
       {snapshot.levelComplete ? <div className="grid45Win">You Win!</div> : null}
       <div className="grid45Hud">
-        <div className="grid45Eyebrow">Parallel Demo</div>
-        <div className="grid45Title">Hyperbolic Grid {`{4,5}`}</div>
+        <div className="grid45Eyebrow">Hyperbolic CC</div>
         <div className="grid45Line">Collect every chip, pass through the socket, then reach the exit.</div>
-        <div className="grid45Line">Ticks run at 10 Hz. Arrow keys or WASD set the next move.</div>
-        <div className="grid45Line">A successful move forces the following tick to stay put.</div>
+        <div className="grid45Line">Arrow keys or WASD move. Regenerate builds a new maze.</div>
         <div className="grid45Metrics">Tick {snapshot.tick}</div>
         <div className="grid45Metrics">State: {describeOutcome(snapshot)}</div>
         <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
-        <div className="grid45Metrics">Socket: {socketStatus}</div>
         <div className="grid45Metrics">Exit: {snapshot.levelComplete ? 'reached' : 'active'}</div>
         <div className="grid45Metrics">Move lock: {snapshot.recoveryTicks > 0 ? 'armed for next tick' : 'ready'}</div>
         <button className="grid45Button" onClick={() => session.reset()}>
