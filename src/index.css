@@ -1,0 +1,137 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #0b0f14;
+  color: #e6edf3;
+}
+
+#root {
+  height: 100%;
+}
+
+.demoShell {
+  position: relative;
+  height: 100%;
+}
+
+.demoViewport {
+  height: 100%;
+}
+
+.demoMenu {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  padding: 12px;
+  border: 1px solid rgba(230, 237, 243, 0.16);
+  border-radius: 16px;
+  background: rgba(7, 11, 15, 0.72);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+}
+
+.demoMenuLabel {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(230, 237, 243, 0.72);
+}
+
+.demoMenuTabs {
+  display: flex;
+  gap: 8px;
+}
+
+.demoTab {
+  padding: 9px 12px;
+  border: 1px solid rgba(230, 237, 243, 0.18);
+  border-radius: 999px;
+  background: rgba(230, 237, 243, 0.06);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.demoTab:hover {
+  background: rgba(230, 237, 243, 0.11);
+}
+
+.demoTabActive {
+  background: rgba(255, 209, 102, 0.16);
+  border-color: rgba(255, 209, 102, 0.42);
+}
+
+.app {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mazeCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  padding: 12px 12px 10px;
+  background: rgba(11, 15, 20, 0.72);
+  border: 1px solid rgba(230, 237, 243, 0.18);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  max-width: min(360px, calc(100% - 24px));
+}
+
+.hudTitle {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  margin-bottom: 6px;
+}
+
+.hudLine {
+  font-size: 13px;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+
+.hudButton {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(230, 237, 243, 0.22);
+  background: rgba(230, 237, 243, 0.08);
+  color: inherit;
+  cursor: pointer;
+}
+
+.hudButton:hover {
+  background: rgba(230, 237, 243, 0.12);
+}
+
+@media (max-width: 720px) {
+  .demoMenu {
+    left: 16px;
+    right: 16px;
+    top: auto;
+    bottom: 16px;
+  }
+
+  .demoMenuTabs {
+    flex-wrap: wrap;
+  }
+}

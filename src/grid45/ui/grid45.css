@@ -1,0 +1,110 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+.grid45App {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  color: #f1ead8;
+  font-family: 'Avenir Next', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(89, 109, 129, 0.2), transparent 44%),
+    linear-gradient(180deg, #0e141b 0%, #05080c 72%);
+}
+
+.grid45Canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.grid45Win {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  padding: 18px 26px;
+  border: 1px solid rgba(241, 234, 216, 0.26);
+  border-radius: 22px;
+  background: rgba(7, 11, 15, 0.82);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.3);
+  color: #ffe39d;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: clamp(36px, 6vw, 64px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.grid45Hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  max-width: min(360px, calc(100% - 32px));
+  padding: 16px 18px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 18px;
+  background: rgba(7, 11, 15, 0.74);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(16px);
+}
+
+.grid45Eyebrow {
+  margin-bottom: 6px;
+  color: #c8a96b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.grid45Title {
+  margin-bottom: 10px;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.grid45Line,
+.grid45Metrics {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.grid45Line {
+  color: rgba(241, 234, 216, 0.88);
+}
+
+.grid45Metrics {
+  margin-top: 6px;
+  color: #f6efde;
+}
+
+.grid45Button {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(200, 169, 107, 0.35);
+  border-radius: 999px;
+  background: rgba(200, 169, 107, 0.12);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.grid45Button:hover {
+  background: rgba(200, 169, 107, 0.2);
+}
