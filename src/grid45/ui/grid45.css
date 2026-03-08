@@ -29,30 +29,55 @@ body {
   height: 100%;
 }
 
-.grid45Win,
-.grid45Lose {
+.grid45EndOverlay {
   position: absolute;
   top: 50%;
   left: 50%;
   z-index: 2;
   transform: translate(-50%, -50%);
-  padding: 18px 26px;
+  min-width: min(420px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 28px;
   border: 1px solid rgba(241, 234, 216, 0.26);
   border-radius: 22px;
   background: rgba(7, 11, 15, 0.82);
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.3);
+  color: #f1ead8;
+  text-align: center;
+}
+
+.grid45EndOverlayLose {
+  border-color: rgba(255, 120, 120, 0.3);
+}
+
+.grid45EndTitle {
   color: #ffe39d;
   font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   font-size: clamp(36px, 6vw, 64px);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  pointer-events: none;
 }
 
-.grid45Lose {
-  border-color: rgba(255, 120, 120, 0.3);
+.grid45EndOverlayLose .grid45EndTitle {
   color: #ff9b9b;
+}
+
+.grid45EndCopy {
+  max-width: 28ch;
+  color: rgba(241, 234, 216, 0.88);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.grid45EndActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
 
 .grid45Hud {
@@ -118,6 +143,16 @@ body {
 
 .grid45Button:hover {
   background: rgba(200, 169, 107, 0.2);
+}
+
+.grid45Button:focus-visible {
+  outline: 2px solid rgba(255, 227, 157, 0.92);
+  outline-offset: 2px;
+}
+
+.grid45ButtonPrimary {
+  background: rgba(200, 169, 107, 0.26);
+  border-color: rgba(255, 227, 157, 0.52);
 }
 
 .grid45Controls {

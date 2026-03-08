@@ -173,6 +173,7 @@ function DagValidatorPanel({ snapshot }: { snapshot: GameState }) {
 export default function Grid45App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawRef = useRef<(() => void) | null>(null)
+  const playAgainButtonRef = useRef<HTMLButtonElement | null>(null)
   const [session] = useState(createSession)
   const [snapshot, setSnapshot] = useState<GameState>(() => session.getSnapshot())
   const [tileset, setTileset] = useState<Grid45Tileset | null>(null)
@@ -188,6 +189,8 @@ export default function Grid45App() {
   const pinkBallTotal = snapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
   const teethTotal = snapshot.world.initialMonsters.filter((monster) => monster.kind === 'teeth').length
   const showDevToggle = import.meta.env.DEV
+  const showEndOverlay = snapshot.levelComplete || snapshot.playerDead
+  const endTitle = snapshot.levelComplete ? 'You Win!' : 'You Died!'
 
   useEffect(() => {
     let active = true
@@ -242,15 +245,49 @@ export default function Grid45App() {
     drawRef.current?.()
   }, [snapshot, tileset])
 
+  useEffect(() => {
+    if (!showEndOverlay) return
+
+    playAgainButtonRef.current?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'Space' && event.key !== ' ' && event.key !== 'Spacebar') return
+      event.preventDefault()
+      session.restart()
+    }
+
+    window.addEventListener('keydown', onKeyDown, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [showEndOverlay, session])
+
   return (
     <div className="grid45App">
       <canvas ref={canvasRef} className="grid45Canvas" />
-      {snapshot.levelComplete ? <div className="grid45Win">You Win!</div> : null}
-      {snapshot.playerDead ? <div className="grid45Lose">You Died!</div> : null}
+      {showEndOverlay ? (
+        <div className={`grid45EndOverlay${snapshot.playerDead ? ' grid45EndOverlayLose' : ''}`}>
+          <div className="grid45EndTitle">{endTitle}</div>
+          <div className="grid45EndCopy">Press Space to play again on this same map.</div>
+          <div className="grid45EndActions">
+            <button ref={playAgainButtonRef} className="grid45Button grid45ButtonPrimary" type="button" onClick={() => session.restart()}>
+              Play Again
+            </button>
+            <button
+              className="grid45Button"
+              type="button"
+              onClick={() => session.reset(worldSize, antCount, pinkBallCount, teethCount)}
+            >
+              Play Another
+            </button>
+          </div>
+        </div>
+      ) : null}
       {showDevToggle && showDagValidator ? <DagValidatorPanel snapshot={snapshot} /> : null}
       <div className="grid45Hud">
         <div className="grid45Eyebrow">Hyperbolic CC</div>
         <div className="grid45Line">Collect every chip, pass through the socket, then reach the exit.</div>
+        <div className="grid45Line">Monsters are placed randomly and may render maps unsolveable.</div>
         <div className="grid45Line">Arrow keys or WASD move. Restart replays this maze; Generate builds a new one.</div>
         <div className="grid45Metrics">Tick {snapshot.tick}</div>
         <div className="grid45Metrics">State: {describeOutcome(snapshot)}</div>
