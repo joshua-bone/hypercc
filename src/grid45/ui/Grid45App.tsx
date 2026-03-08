@@ -5,7 +5,10 @@ import { createIntervalClock } from '../adapters/intervalClock'
 import { attachKeyboardIntent } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { keyColors, type GameState, type KeyColor } from '../domain/model'
-import { defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
+import { defaultAntCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
+
+const MIN_ANT_COUNT = 0
+const MAX_ANT_COUNT = 128
 
 const keyLabels: Record<KeyColor, string> = {
   blue: 'B',
@@ -40,12 +43,15 @@ function createSession(): Grid45Session {
       nextSeed,
     },
     initialWorldSize: defaultWorldSize,
+    initialAntCount: defaultAntCount,
   })
 }
 
 function describeOutcome(snapshot: GameState): string {
   if (snapshot.levelComplete) return 'You Win!'
+  if (snapshot.playerDead) return 'You Died!'
   if (snapshot.lastOutcome === 'completed') return 'You Win!'
+  if (snapshot.lastOutcome === 'dead') return 'You Died!'
   if (snapshot.lastOutcome === 'locked') return 'cooldown tick'
   if (snapshot.lastOutcome === 'moved') return `moved ${snapshot.lastIntent}`
   if (snapshot.lastOutcome === 'blocked') return `blocked ${snapshot.lastIntent}`
@@ -170,9 +176,11 @@ export default function Grid45App() {
   const [tileset, setTileset] = useState<Grid45Tileset | null>(null)
   const [showDagValidator, setShowDagValidator] = useState(false)
   const [worldSize, setWorldSize] = useState<WorldSize>(defaultWorldSize)
+  const [antCount, setAntCount] = useState<number>(defaultAntCount)
   const totalChips = snapshot.world.chipCellIds.length
   const chipsRemaining = snapshot.remainingChipCellIds.size
   const chipsCollected = totalChips - chipsRemaining
+  const antTotal = snapshot.world.initialAnts.length
   const showDevToggle = import.meta.env.DEV
 
   useEffect(() => {
@@ -232,6 +240,7 @@ export default function Grid45App() {
     <div className="grid45App">
       <canvas ref={canvasRef} className="grid45Canvas" />
       {snapshot.levelComplete ? <div className="grid45Win">You Win!</div> : null}
+      {snapshot.playerDead ? <div className="grid45Lose">You Died!</div> : null}
       {showDevToggle && showDagValidator ? <DagValidatorPanel snapshot={snapshot} /> : null}
       <div className="grid45Hud">
         <div className="grid45Eyebrow">Hyperbolic CC</div>
@@ -241,6 +250,7 @@ export default function Grid45App() {
         <div className="grid45Metrics">State: {describeOutcome(snapshot)}</div>
         <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
         <div className="grid45Metrics">Keys: {formatKeyInventory(snapshot)}</div>
+        <div className="grid45Metrics">Ants: {antTotal}</div>
         <div className="grid45Metrics">Exit: {snapshot.levelComplete ? 'reached' : 'active'}</div>
         <div className="grid45Metrics">Move lock: {snapshot.recoveryTicks > 0 ? 'armed for next tick' : 'ready'}</div>
         {showDevToggle ? (
@@ -271,7 +281,28 @@ export default function Grid45App() {
               ))}
             </select>
           </label>
-          <button className="grid45Button" onClick={() => session.reset(worldSize)}>
+          <label className="grid45SelectLabel grid45AntControl">
+            <span>Ants</span>
+            <div className="grid45AntRow">
+              <button className="grid45Button grid45StepButton" type="button" onClick={() => setAntCount((count) => Math.max(MIN_ANT_COUNT, count - 1))}>
+                -
+              </button>
+              <input
+                className="grid45Slider"
+                type="range"
+                min={MIN_ANT_COUNT}
+                max={MAX_ANT_COUNT}
+                step={1}
+                value={antCount}
+                onChange={(event) => setAntCount(Number(event.target.value))}
+              />
+              <button className="grid45Button grid45StepButton" type="button" onClick={() => setAntCount((count) => Math.min(MAX_ANT_COUNT, count + 1))}>
+                +
+              </button>
+            </div>
+            <span className="grid45AntValue">{antCount}</span>
+          </label>
+          <button className="grid45Button" onClick={() => session.reset(worldSize, antCount)}>
             Generate Maze
           </button>
         </div>

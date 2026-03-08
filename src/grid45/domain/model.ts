@@ -18,7 +18,7 @@ export type CellFeature =
   | 'door-red'
   | 'door-green'
   | 'door-yellow'
-export type TickOutcome = 'moved' | 'blocked' | 'resting' | 'locked' | 'completed'
+export type TickOutcome = 'moved' | 'blocked' | 'resting' | 'locked' | 'completed' | 'dead'
 
 export type DirectionMap<T> = Record<Direction, T>
 export type KeyInventory = Record<KeyColor, number>
@@ -63,6 +63,13 @@ export type MazeCell = {
   exits: DirectionMap<number | null>
 }
 
+export type AntState = {
+  id: number
+  cellId: number
+  facing: Direction
+  recoveryTicks: number
+}
+
 export type MazeWorld = {
   cells: MazeCell[]
   startCellId: number
@@ -70,6 +77,7 @@ export type MazeWorld = {
   socketCellId: number
   exitCellId: number
   areaDag: AreaDag
+  initialAnts: AntState[]
 }
 
 export type GameState = {
@@ -80,11 +88,13 @@ export type GameState = {
   recoveryTicks: number
   lastIntent: MoveIntent
   lastOutcome: TickOutcome
+  ants: AntState[]
   remainingChipCellIds: Set<number>
   collectedKeyCellIds: Set<number>
   openedDoorCellIds: Set<number>
   keyInventory: KeyInventory
   socketCleared: boolean
+  playerDead: boolean
   levelComplete: boolean
   world: MazeWorld
 }

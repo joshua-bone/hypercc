@@ -15,6 +15,7 @@ export type Grid45Tileset = {
   keys: Record<KeyColor, HTMLCanvasElement>
   doors: Record<KeyColor, HTMLCanvasElement>
   playerSprites: Record<Direction, HTMLCanvasElement>
+  antSprites: Record<Direction, HTMLCanvasElement>
 }
 
 const playerTileRows: Record<Direction, number> = {
@@ -36,6 +37,13 @@ const doorTileRows: Record<KeyColor, number> = {
   red: 8,
   green: 9,
   yellow: 10,
+}
+
+const antTileRows: Record<Direction, number> = {
+  north: 1,
+  east: 2,
+  south: 3,
+  west: 4,
 }
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -126,6 +134,12 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       east: applyMask(drawTile(image, { col: 10, row: playerTileRows.east }), drawTile(image, { col: 13, row: playerTileRows.east })),
       south: applyMask(drawTile(image, { col: 10, row: playerTileRows.south }), drawTile(image, { col: 13, row: playerTileRows.south })),
       west: applyMask(drawTile(image, { col: 10, row: playerTileRows.west }), drawTile(image, { col: 13, row: playerTileRows.west })),
+    },
+    antSprites: {
+      north: applyMask(drawTile(image, { col: 8, row: antTileRows.north }), drawTile(image, { col: 11, row: antTileRows.north })),
+      east: applyMask(drawTile(image, { col: 8, row: antTileRows.east }), drawTile(image, { col: 11, row: antTileRows.east })),
+      south: applyMask(drawTile(image, { col: 8, row: antTileRows.south }), drawTile(image, { col: 11, row: antTileRows.south })),
+      west: applyMask(drawTile(image, { col: 8, row: antTileRows.west }), drawTile(image, { col: 11, row: antTileRows.west })),
     },
   }
 }

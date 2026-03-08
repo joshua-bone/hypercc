@@ -22,6 +22,7 @@ const WORLD_GENERATION_ATTEMPTS = 120
 const GATE_CANDIDATE_LIMIT = 20
 const FRONTIER_SAMPLE_COUNT = 6
 const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
+const DEFAULT_ANT_COUNT = 1
 const KEY_COLORS: KeyColor[] = ['blue', 'red', 'yellow', 'green']
 
 export const worldSizes = ['tiny', 'small', 'medium', 'large', 'huge'] as const
@@ -80,10 +81,12 @@ const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
 }
 
 export const defaultWorldSize = DEFAULT_WORLD_SIZE
+export const defaultAntCount = DEFAULT_ANT_COUNT
 
 type CreateGrid45WorldOptions = {
   seed: number
   size?: WorldSize
+  antCount?: number
   maxCells?: number
   maxCenterRadius?: number
 }
@@ -1124,8 +1127,33 @@ function rotateCell(cell: HyperCell): Pick<MazeCell, 'id' | 'center' | 'vertices
   }
 }
 
+function buildInitialAnts(cells: MazeCell[], startCellId: number, antCount: number, seed: number): MazeWorld['initialAnts'] {
+  if (antCount <= 0) return []
+
+  const rng = mulberry32(seed)
+  const candidateCellIds = cells
+    .filter((cell) => cell.kind === 'floor' && cell.feature === 'none' && cell.id !== startCellId)
+    .map((cell) => cell.id)
+
+  for (let index = candidateCellIds.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(rng() * (index + 1))
+    const temp = candidateCellIds[index]
+    candidateCellIds[index] = candidateCellIds[swapIndex]
+    candidateCellIds[swapIndex] = temp
+  }
+
+  const spawnCount = Math.min(Math.max(0, Math.floor(antCount)), candidateCellIds.length)
+  return candidateCellIds.slice(0, spawnCount).map((cellId, id) => ({
+    id,
+    cellId,
+    facing: directions[Math.floor(rng() * directions.length)],
+    recoveryTicks: 0,
+  }))
+}
+
 export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld {
   const size = options.size ?? DEFAULT_WORLD_SIZE
+  const antCount = Math.max(0, Math.floor(options.antCount ?? DEFAULT_ANT_COUNT))
   const config = worldSizeConfigs[size]
   const maxCells = options.maxCells ?? config.maxCells
   const maxCenterRadius = options.maxCenterRadius ?? config.maxCenterRadius
@@ -1175,17 +1203,20 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
       continue
     }
 
+    const cells = draftCells.map((cell) => ({
+      ...cell,
+      kind: roomLayout.layout?.cellKinds[cell.id] ?? 'wall',
+      feature: progression.layout?.cellFeatures[cell.id] ?? 'none',
+    }))
+
     return {
       startCellId,
       chipCellIds: progression.layout.chipCellIds,
       socketCellId: progression.layout.socketCellId,
       exitCellId: progression.layout.exitCellId,
       areaDag: progression.layout.areaDag,
-      cells: draftCells.map((cell) => ({
-        ...cell,
-        kind: roomLayout.layout?.cellKinds[cell.id] ?? 'wall',
-        feature: progression.layout?.cellFeatures[cell.id] ?? 'none',
-      })),
+      initialAnts: buildInitialAnts(cells, startCellId, antCount, mixSeed(attemptSeed, 811)),
+      cells,
     }
   }
 

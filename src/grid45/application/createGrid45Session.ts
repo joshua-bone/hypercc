@@ -1,6 +1,6 @@
 import { createInitialGameState, advanceGame } from '../domain/engine'
 import type { GameState, MoveIntent } from '../domain/model'
-import { createGrid45World, defaultWorldSize, type WorldSize } from '../domain/world'
+import { createGrid45World, defaultAntCount, defaultWorldSize, type WorldSize } from '../domain/world'
 import type { ClockPort, SeedPort } from './ports'
 
 export type Grid45Session = {
@@ -8,7 +8,7 @@ export type Grid45Session = {
   subscribe(listener: (state: GameState) => void): () => void
   setIntent(intent: MoveIntent): void
   restart(): void
-  reset(size?: WorldSize): void
+  reset(size?: WorldSize, antCount?: number): void
   start(): void
   stop(): void
 }
@@ -17,13 +17,15 @@ type CreateGrid45SessionOptions = {
   clock: ClockPort
   seedPort: SeedPort
   initialWorldSize?: WorldSize
+  initialAntCount?: number
 }
 
 export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45Session {
-  const { clock, seedPort, initialWorldSize = defaultWorldSize } = options
+  const { clock, seedPort, initialWorldSize = defaultWorldSize, initialAntCount = defaultAntCount } = options
   const listeners = new Set<(state: GameState) => void>()
   let worldSize = initialWorldSize
-  const createWorld = () => createGrid45World({ seed: seedPort.nextSeed(), size: worldSize })
+  let antCount = initialAntCount
+  const createWorld = () => createGrid45World({ seed: seedPort.nextSeed(), size: worldSize, antCount })
   let currentWorld = createWorld()
 
   let state = createInitialGameState(currentWorld)
@@ -45,11 +47,11 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
   const tick = () => {
     state = advanceGame(state, pendingIntent)
     emit()
-    if (state.levelComplete) haltClock()
+    if (state.levelComplete || state.playerDead) haltClock()
   }
 
   const beginTicking = () => {
-    if (running || state.levelComplete) return
+    if (running || state.levelComplete || state.playerDead) return
     running = true
     stopClock = clock.start(tick)
   }
@@ -67,9 +69,9 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
     },
     setIntent(intent) {
       pendingIntent = intent
-      if (!running && intent !== 'stay' && !state.levelComplete) {
+      if (!running && intent !== 'stay' && !state.levelComplete && !state.playerDead) {
         tick()
-        if (!state.levelComplete) beginTicking()
+        if (!state.levelComplete && !state.playerDead) beginTicking()
       }
     },
     restart() {
@@ -78,8 +80,9 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
       state = createInitialGameState(currentWorld)
       emit()
     },
-    reset(size = worldSize) {
+    reset(size = worldSize, nextAntCount = antCount) {
       worldSize = size
+      antCount = nextAntCount
       haltClock()
       pendingIntent = 'stay'
       currentWorld = createWorld()

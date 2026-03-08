@@ -29,7 +29,8 @@ body {
   height: 100%;
 }
 
-.grid45Win {
+.grid45Win,
+.grid45Lose {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -47,6 +48,11 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   pointer-events: none;
+}
+
+.grid45Lose {
+  border-color: rgba(255, 120, 120, 0.3);
+  color: #ff9b9b;
 }
 
 .grid45Hud {
@@ -143,6 +149,34 @@ body {
   font: inherit;
   text-transform: none;
   letter-spacing: normal;
+}
+
+.grid45AntControl {
+  min-width: 180px;
+}
+
+.grid45AntRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grid45StepButton {
+  min-width: 38px;
+  padding-inline: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.grid45Slider {
+  width: 132px;
+}
+
+.grid45AntValue {
+  color: #f6efde;
+  font-size: 13px;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .grid45DagPanel {

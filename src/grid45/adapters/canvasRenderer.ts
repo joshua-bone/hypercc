@@ -2,7 +2,7 @@ import { geodesicPolyline } from '../../hyper/geodesic'
 import { toCameraView } from '../domain/camera'
 import { doorColorFromFeature, keyColorFromFeature } from '../domain/model'
 import type { Grid45Tileset } from './spriteAtlas'
-import type { GameState, MazeCell } from '../domain/model'
+import type { AntState, Direction, GameState, MazeCell } from '../domain/model'
 
 type ScreenPoint = {
   x: number
@@ -83,6 +83,36 @@ function outlineBounds(outline: ProjectedOutline): { minX: number; minY: number;
   }
 
   return { minX, minY, maxX, maxY }
+}
+
+function directionFromViewDelta(dx: number, dy: number): Direction {
+  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'east' : 'west'
+  return dy >= 0 ? 'north' : 'south'
+}
+
+function shapeCenter(shape: ProjectedShape): ScreenPoint {
+  const sum = shape.corners.reduce(
+    (acc, corner) => ({
+      x: acc.x + corner.x,
+      y: acc.y + corner.y,
+    }),
+    { x: 0, y: 0 },
+  )
+  return {
+    x: sum.x / shape.corners.length,
+    y: sum.y / shape.corners.length,
+  }
+}
+
+function antSpriteFacing(ant: AntState, state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>): Direction {
+  const antCell = state.world.cells[ant.cellId]
+  const targetId = antCell.exits[ant.facing]
+  if (targetId === null) return ant.facing
+
+  const playerCenter = state.world.cells[state.playerCellId].center
+  const antView = toCameraView(antCell.center, playerCenter, state.cameraAngle)
+  const targetView = toCameraView(state.world.cells[targetId].center, playerCenter, state.cameraAngle)
+  return directionFromViewDelta(targetView.x - antView.x, targetView.y - antView.y)
 }
 
 function traceCellPath(ctx: CanvasRenderingContext2D, outline: ProjectedOutline): void {
@@ -334,6 +364,31 @@ export function renderGrid45Scene(
     if (!tileset) {
       const featureFill = featureFillForCell(projected.cell, state)
       if (featureFill) fillCell(ctx, projected.shape.outline, featureFill)
+    }
+  }
+
+  for (const ant of state.ants) {
+    const antShape = projectedCells[ant.cellId]?.shape
+    if (!antShape) continue
+
+    const antCenter = shapeCenter(antShape)
+    const { minX, minY, maxX, maxY } = outlineBounds(antShape.outline)
+    const spriteSize = Math.max(18, Math.min(54, Math.min(maxX - minX, maxY - minY) * 0.3))
+
+    if (tileset) {
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(
+        tileset.antSprites[antSpriteFacing(ant, state)],
+        antCenter.x - spriteSize / 2,
+        antCenter.y - spriteSize / 2,
+        spriteSize,
+        spriteSize,
+      )
+    } else {
+      ctx.fillStyle = '#7b311d'
+      ctx.beginPath()
+      ctx.arc(antCenter.x, antCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
+      ctx.fill()
     }
   }
 
