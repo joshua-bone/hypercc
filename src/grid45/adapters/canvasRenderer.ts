@@ -1,5 +1,7 @@
 import { geodesicPolyline } from '../../hyper/geodesic'
+import { dot, norm, type Vec2 } from '../../hyper/vec2'
 import { toCameraView } from '../domain/camera'
+import { directionVectors } from '../domain/directions'
 import { doorColorFromFeature, keyColorFromFeature } from '../domain/model'
 import type { Grid45Tileset } from './spriteAtlas'
 import type { AntState, Direction, GameState, MazeCell } from '../domain/model'
@@ -13,6 +15,20 @@ type ProjectedOutline = ScreenPoint[][]
 type ProjectedShape = {
   outline: ProjectedOutline
   corners: ScreenPoint[]
+}
+
+function midpoint(a: Vec2, b: Vec2): Vec2 {
+  return {
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+  }
+}
+
+function toUnitVector(a: Vec2, b: Vec2): Vec2 {
+  return norm({
+    x: b.x - a.x,
+    y: b.y - a.y,
+  })
 }
 
 function projectCellShape(
@@ -90,6 +106,51 @@ function directionFromViewDelta(dx: number, dy: number): Direction {
   return dy >= 0 ? 'north' : 'south'
 }
 
+function assignDirectionSides(vertices: Vec2[], center: Vec2): Record<Direction, number> {
+  const sideSignals = vertices.map((a, side) => {
+    const b = vertices[(side + 1) % vertices.length]
+    return {
+      side,
+      outward: toUnitVector(center, midpoint(a, b)),
+    }
+  })
+
+  let bestScore = -Infinity
+  let bestSides = [0, 1, 2, 3]
+  const directionsOrder: Direction[] = ['north', 'east', 'south', 'west']
+  const used = new Array(sideSignals.length).fill(false)
+  const currentSides = new Array(directionsOrder.length).fill(0)
+
+  const visit = (directionIndex: number, score: number) => {
+    if (directionIndex === directionsOrder.length) {
+      if (score > bestScore) {
+        bestScore = score
+        bestSides = currentSides.slice()
+      }
+      return
+    }
+
+    const direction = directionsOrder[directionIndex]
+    const directionVector = directionVectors[direction]
+    for (const signal of sideSignals) {
+      if (used[signal.side]) continue
+      used[signal.side] = true
+      currentSides[directionIndex] = signal.side
+      visit(directionIndex + 1, score + dot(signal.outward, directionVector))
+      used[signal.side] = false
+    }
+  }
+
+  visit(0, 0)
+
+  return {
+    north: bestSides[0],
+    east: bestSides[1],
+    south: bestSides[2],
+    west: bestSides[3],
+  }
+}
+
 function shapeCenter(shape: ProjectedShape): ScreenPoint {
   const sum = shape.corners.reduce(
     (acc, corner) => ({
@@ -106,13 +167,12 @@ function shapeCenter(shape: ProjectedShape): ScreenPoint {
 
 function antSpriteFacing(ant: AntState, state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>): Direction {
   const antCell = state.world.cells[ant.cellId]
-  const targetId = antCell.exits[ant.facing]
-  if (targetId === null) return ant.facing
-
+  const sideIndex = assignDirectionSides(antCell.vertices, antCell.center)[ant.facing]
+  const sideMidpoint = midpoint(antCell.vertices[sideIndex], antCell.vertices[(sideIndex + 1) % antCell.vertices.length])
   const playerCenter = state.world.cells[state.playerCellId].center
   const antView = toCameraView(antCell.center, playerCenter, state.cameraAngle)
-  const targetView = toCameraView(state.world.cells[targetId].center, playerCenter, state.cameraAngle)
-  return directionFromViewDelta(targetView.x - antView.x, targetView.y - antView.y)
+  const facingView = toCameraView(sideMidpoint, playerCenter, state.cameraAngle)
+  return directionFromViewDelta(facingView.x - antView.x, facingView.y - antView.y)
 }
 
 function traceCellPath(ctx: CanvasRenderingContext2D, outline: ProjectedOutline): void {
