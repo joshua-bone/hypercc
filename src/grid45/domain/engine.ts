@@ -1,6 +1,6 @@
-import { dot, lenSq, norm } from '../../hyper/vec2'
-import { cameraAngleForMove, toPlayerView } from './camera'
-import { directionVectors, directions, resolveCameraRelativeExits } from './directions'
+import { hyperbolicDistance } from '../../hyper/poincare'
+import { cameraAngleForMove } from './camera'
+import { directions, resolveCameraRelativeExits } from './directions'
 import {
   createEmptyKeyInventory,
   doorColorFromFeature,
@@ -42,6 +42,8 @@ type MonsterMovePlan = {
   facing: Direction
   directions: Direction[]
 }
+
+const DISTANCE_EPSILON = 1e-6
 
 export function createInitialGameState(world: MazeWorld): GameState {
   return {
@@ -101,23 +103,31 @@ function nextFacingFromMove(world: MazeWorld, previousCellId: number, nextCellId
   return backwardDirection ? oppositeDirection[backwardDirection] : fallback
 }
 
-function chaseDirectionForTeeth(world: MazeWorld, monsterCellId: number, playerCellId: number, fallback: Direction): Direction {
-  const playerVector = toPlayerView(world.cells[playerCellId].center, world.cells[monsterCellId].center)
-  if (lenSq(playerVector) < 1e-12) return fallback
+function chasePlanForTeeth(world: MazeWorld, monsterCellId: number, playerCellId: number, fallback: Direction): MonsterMovePlan {
+  const monsterCenter = world.cells[monsterCellId].center
+  const playerCenter = world.cells[playerCellId].center
+  const currentDistance = hyperbolicDistance(monsterCenter, playerCenter)
 
-  const chaseVector = norm(playerVector)
   let bestDirection = fallback
-  let bestScore = -Infinity
+  let bestDistance = Number.POSITIVE_INFINITY
 
   for (const direction of directions) {
-    const score = dot(chaseVector, directionVectors[direction])
-    if (score > bestScore) {
-      bestScore = score
-      bestDirection = direction
-    }
+    const targetId = world.cells[monsterCellId].exits[direction]
+    if (targetId === null) continue
+
+    const targetDistance = hyperbolicDistance(world.cells[targetId].center, playerCenter)
+    const isBetter = targetDistance + DISTANCE_EPSILON < bestDistance
+    const isStableTie = Math.abs(targetDistance - bestDistance) <= DISTANCE_EPSILON && direction === fallback
+    if (!isBetter && !isStableTie) continue
+
+    bestDirection = direction
+    bestDistance = targetDistance
   }
 
-  return bestDirection
+  return {
+    facing: bestDirection,
+    directions: bestDistance + DISTANCE_EPSILON < currentDistance ? [bestDirection] : [],
+  }
 }
 
 function movePlanForMonster(state: MonsterTraversalState, monster: MonsterState, playerCellId: number): MonsterMovePlan {
@@ -129,11 +139,7 @@ function movePlanForMonster(state: MonsterTraversalState, monster: MonsterState,
   }
 
   if (monster.kind === 'teeth') {
-    const facing = chaseDirectionForTeeth(state.world, monster.cellId, playerCellId, monster.facing)
-    return {
-      facing,
-      directions: [facing],
-    }
+    return chasePlanForTeeth(state.world, monster.cellId, playerCellId, monster.facing)
   }
 
   return {
