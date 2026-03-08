@@ -44,6 +44,7 @@ type MonsterMovePlan = {
 }
 
 const DISTANCE_EPSILON = 1e-6
+const UNREACHABLE_DISTANCE = Number.POSITIVE_INFINITY
 
 export function createInitialGameState(world: MazeWorld): GameState {
   return {
@@ -103,34 +104,111 @@ function nextFacingFromMove(world: MazeWorld, previousCellId: number, nextCellId
   return backwardDirection ? oppositeDirection[backwardDirection] : fallback
 }
 
-function chasePlanForTeeth(world: MazeWorld, monsterCellId: number, playerCellId: number, fallback: Direction): MonsterMovePlan {
-  const monsterCenter = world.cells[monsterCellId].center
-  const playerCenter = world.cells[playerCellId].center
-  const currentDistance = hyperbolicDistance(monsterCenter, playerCenter)
+function monsterPathCanEnterCell(
+  state: MonsterTraversalState,
+  targetId: number,
+  playerCellId: number,
+): boolean {
+  if (targetId === playerCellId) return true
 
-  let bestDirection = fallback
-  let bestDistance = Number.POSITIVE_INFINITY
+  const cell = state.world.cells[targetId]
+  if (cell.kind !== 'floor') return false
 
-  for (const direction of directions) {
-    const targetId = world.cells[monsterCellId].exits[direction]
-    if (targetId === null) continue
+  const doorColor = doorColorFromFeature(cell.feature)
+  if (doorColor !== null) return state.openedDoorCellIds.has(targetId)
+  if (cell.feature === 'socket') return state.socketCleared
+  if (cell.feature === 'chip') return !state.remainingChipCellIds.has(targetId)
 
-    const targetDistance = hyperbolicDistance(world.cells[targetId].center, playerCenter)
-    const isBetter = targetDistance + DISTANCE_EPSILON < bestDistance
-    const isStableTie = Math.abs(targetDistance - bestDistance) <= DISTANCE_EPSILON && direction === fallback
-    if (!isBetter && !isStableTie) continue
+  const keyColor = keyColorFromFeature(cell.feature)
+  if (keyColor !== null) return state.collectedKeyCellIds.has(targetId)
 
-    bestDirection = direction
-    bestDistance = targetDistance
+  return cell.feature === 'none'
+}
+
+function buildMonsterPathDistanceByCellId(state: MonsterTraversalState, playerCellId: number): number[] {
+  const distanceByCellId = new Array<number>(state.world.cells.length).fill(UNREACHABLE_DISTANCE)
+  const queue = [playerCellId]
+  distanceByCellId[playerCellId] = 0
+
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const cellId = queue[queueIndex]
+    const nextDistance = distanceByCellId[cellId] + 1
+
+    for (const direction of directions) {
+      const targetId = state.world.cells[cellId].exits[direction]
+      if (targetId === null || distanceByCellId[targetId] !== UNREACHABLE_DISTANCE) continue
+      if (!monsterPathCanEnterCell(state, targetId, playerCellId)) continue
+
+      distanceByCellId[targetId] = nextDistance
+      queue.push(targetId)
+    }
   }
 
+  return distanceByCellId
+}
+
+function chasePlanForTeeth(
+  world: MazeWorld,
+  monsterCellId: number,
+  playerCellId: number,
+  fallback: Direction,
+  pathDistanceByCellId: number[],
+): MonsterMovePlan {
+  const monsterCenter = world.cells[monsterCellId].center
+  const playerCenter = world.cells[playerCellId].center
+  const currentPathDistance = pathDistanceByCellId[monsterCellId]
+  const rankedDirections = directions
+    .flatMap((direction) => {
+      const targetId = world.cells[monsterCellId].exits[direction]
+      if (targetId === null) return []
+
+      return [
+        {
+          direction,
+          targetId,
+          hyperbolicDistance: hyperbolicDistance(world.cells[targetId].center, playerCenter),
+        },
+      ]
+    })
+    .sort((a, b) => {
+      const distanceDelta = a.hyperbolicDistance - b.hyperbolicDistance
+      if (Math.abs(distanceDelta) > DISTANCE_EPSILON) return distanceDelta
+      if (a.direction === fallback && b.direction !== fallback) return -1
+      if (b.direction === fallback && a.direction !== fallback) return 1
+      return 0
+    })
+
+  const bestCandidate = rankedDirections[0]
+  if (!bestCandidate) {
+    return {
+      facing: fallback,
+      directions: [],
+    }
+  }
+
+  const secondCandidate = rankedDirections[1]
+  const bestImproves =
+    pathDistanceByCellId[bestCandidate.targetId] + DISTANCE_EPSILON < currentPathDistance
+  const canFallback =
+    bestImproves &&
+    secondCandidate !== undefined &&
+    pathDistanceByCellId[secondCandidate.targetId] + DISTANCE_EPSILON < currentPathDistance
+
   return {
-    facing: bestDirection,
-    directions: bestDistance + DISTANCE_EPSILON < currentDistance ? [bestDirection] : [],
+    facing: bestCandidate.direction,
+    directions:
+      !bestImproves ? [] :
+      canFallback ? [bestCandidate.direction, secondCandidate.direction] :
+      [bestCandidate.direction],
   }
 }
 
-function movePlanForMonster(state: MonsterTraversalState, monster: MonsterState, playerCellId: number): MonsterMovePlan {
+function movePlanForMonster(
+  state: MonsterTraversalState,
+  monster: MonsterState,
+  playerCellId: number,
+  pathDistanceByCellId: number[],
+): MonsterMovePlan {
   if (monster.kind === 'pink-ball') {
     return {
       facing: monster.facing,
@@ -139,7 +217,7 @@ function movePlanForMonster(state: MonsterTraversalState, monster: MonsterState,
   }
 
   if (monster.kind === 'teeth') {
-    return chasePlanForTeeth(state.world, monster.cellId, playerCellId, monster.facing)
+    return chasePlanForTeeth(state.world, monster.cellId, playerCellId, monster.facing, pathDistanceByCellId)
   }
 
   return {
@@ -159,6 +237,7 @@ function advanceMonsters(
 ): MonsterAdvanceResult {
   const nextMonsters: MonsterState[] = []
   const occupiedCellIds = new Set(monsters.map((monster) => monster.cellId))
+  const pathDistanceByCellId = buildMonsterPathDistanceByCellId(state, playerCellId)
 
   for (let monsterIndex = 0; monsterIndex < monsters.length; monsterIndex += 1) {
     const monster = monsters[monsterIndex]
@@ -173,7 +252,7 @@ function advanceMonsters(
       continue
     }
 
-    const movePlan = movePlanForMonster(state, monster, playerCellId)
+    const movePlan = movePlanForMonster(state, monster, playerCellId, pathDistanceByCellId)
     const activeMonster = movePlan.facing === monster.facing ? monster : { ...monster, facing: movePlan.facing }
     const cell = state.world.cells[activeMonster.cellId]
     let moved = false
