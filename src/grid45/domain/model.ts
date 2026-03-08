@@ -22,7 +22,7 @@ export type TickOutcome = 'moved' | 'blocked' | 'resting' | 'locked' | 'complete
 
 export type DirectionMap<T> = Record<Direction, T>
 export type KeyInventory = Record<KeyColor, number>
-export type MonsterKind = 'ant' | 'pink-ball'
+export type MonsterKind = 'ant' | 'pink-ball' | 'teeth'
 
 export type AreaDagNode = {
   id: number

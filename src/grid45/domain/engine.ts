@@ -1,5 +1,6 @@
-import { cameraAngleForMove } from './camera'
-import { directions, resolveCameraRelativeExits } from './directions'
+import { dot, lenSq, norm } from '../../hyper/vec2'
+import { cameraAngleForMove, toPlayerView } from './camera'
+import { directionVectors, directions, resolveCameraRelativeExits } from './directions'
 import {
   createEmptyKeyInventory,
   doorColorFromFeature,
@@ -35,6 +36,11 @@ type MonsterTraversalState = Pick<
 type MonsterAdvanceResult = {
   monsters: MonsterState[]
   playerDead: boolean
+}
+
+type MonsterMovePlan = {
+  facing: Direction
+  directions: Direction[]
 }
 
 export function createInitialGameState(world: MazeWorld): GameState {
@@ -95,9 +101,49 @@ function nextFacingFromMove(world: MazeWorld, previousCellId: number, nextCellId
   return backwardDirection ? oppositeDirection[backwardDirection] : fallback
 }
 
-function moveOrderForMonster(monster: MonsterState): Direction[] {
-  if (monster.kind === 'pink-ball') return [monster.facing, oppositeDirection[monster.facing]]
-  return antTurnPriority[monster.facing]
+function chaseDirectionForTeeth(world: MazeWorld, monsterCellId: number, playerCellId: number, fallback: Direction): Direction {
+  const playerVector = toPlayerView(world.cells[playerCellId].center, world.cells[monsterCellId].center)
+  if (lenSq(playerVector) < 1e-12) return fallback
+
+  const chaseVector = norm(playerVector)
+  let bestDirection = fallback
+  let bestScore = -Infinity
+
+  for (const direction of directions) {
+    const score = dot(chaseVector, directionVectors[direction])
+    if (score > bestScore) {
+      bestScore = score
+      bestDirection = direction
+    }
+  }
+
+  return bestDirection
+}
+
+function movePlanForMonster(state: MonsterTraversalState, monster: MonsterState, playerCellId: number): MonsterMovePlan {
+  if (monster.kind === 'pink-ball') {
+    return {
+      facing: monster.facing,
+      directions: [monster.facing, oppositeDirection[monster.facing]],
+    }
+  }
+
+  if (monster.kind === 'teeth') {
+    const facing = chaseDirectionForTeeth(state.world, monster.cellId, playerCellId, monster.facing)
+    return {
+      facing,
+      directions: [facing],
+    }
+  }
+
+  return {
+    facing: monster.facing,
+    directions: antTurnPriority[monster.facing],
+  }
+}
+
+function cooldownTicksForMonster(kind: MonsterState['kind']): number {
+  return kind === 'teeth' ? 3 : 1
 }
 
 function advanceMonsters(
@@ -121,18 +167,20 @@ function advanceMonsters(
       continue
     }
 
-    const cell = state.world.cells[monster.cellId]
+    const movePlan = movePlanForMonster(state, monster, playerCellId)
+    const activeMonster = movePlan.facing === monster.facing ? monster : { ...monster, facing: movePlan.facing }
+    const cell = state.world.cells[activeMonster.cellId]
     let moved = false
 
-    for (const direction of moveOrderForMonster(monster)) {
+    for (const direction of movePlan.directions) {
       const targetId = cell.exits[direction]
       if (targetId === null || !monsterCanEnterCell(state, targetId, playerCellId, occupiedCellIds)) continue
 
       const nextMonster = {
-        ...monster,
+        ...activeMonster,
         cellId: targetId,
         facing: nextFacingFromMove(state.world, monster.cellId, targetId, direction),
-        recoveryTicks: 1,
+        recoveryTicks: cooldownTicksForMonster(activeMonster.kind),
       }
       nextMonsters.push(nextMonster)
 
@@ -150,8 +198,8 @@ function advanceMonsters(
 
     if (moved) continue
 
-    nextMonsters.push({ ...monster })
-    occupiedCellIds.add(monster.cellId)
+    nextMonsters.push({ ...activeMonster })
+    occupiedCellIds.add(activeMonster.cellId)
   }
 
   return {

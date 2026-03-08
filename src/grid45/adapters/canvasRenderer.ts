@@ -436,7 +436,11 @@ export function renderGrid45Scene(
     const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
 
     if (tileset) {
-      const sprite = monster.kind === 'pink-ball' ? tileset.pinkBallSprite : tileset.antSprites[monsterScreenFacing(monster, state)]
+      const screenFacing = monsterScreenFacing(monster, state)
+      const sprite =
+        monster.kind === 'pink-ball' ? tileset.pinkBallSprite :
+        monster.kind === 'teeth' ? tileset.teethSprites[screenFacing] :
+        tileset.antSprites[screenFacing]
       ctx.imageSmoothingEnabled = false
       ctx.drawImage(
         sprite,
@@ -446,7 +450,10 @@ export function renderGrid45Scene(
         spriteSize,
       )
     } else {
-      ctx.fillStyle = monster.kind === 'pink-ball' ? '#ff71c4' : '#7b311d'
+      ctx.fillStyle =
+        monster.kind === 'pink-ball' ? '#ff71c4' :
+        monster.kind === 'teeth' ? '#f1c9f9' :
+        '#7b311d'
       ctx.beginPath()
       ctx.arc(monsterCenter.x, monsterCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
       ctx.fill()
