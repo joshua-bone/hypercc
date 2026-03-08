@@ -1,5 +1,5 @@
 import { cameraAngleForMove } from './camera'
-import { resolveCameraRelativeExits } from './directions'
+import { directions, resolveCameraRelativeExits } from './directions'
 import {
   createEmptyKeyInventory,
   doorColorFromFeature,
@@ -17,6 +17,13 @@ const antTurnPriority: Record<Direction, Direction[]> = {
   east: ['north', 'east', 'south', 'west'],
   south: ['east', 'south', 'west', 'north'],
   west: ['south', 'west', 'north', 'east'],
+}
+
+const oppositeDirection: Record<Direction, Direction> = {
+  north: 'south',
+  east: 'west',
+  south: 'north',
+  west: 'east',
 }
 
 type AntTraversalState = Pick<
@@ -110,10 +117,13 @@ function advanceAnts(
       const targetId = cell.exits[direction]
       if (targetId === null || !antCanEnterCell(state, targetId, playerCellId, occupiedCellIds)) continue
 
+      const backwardDirection = directions.find((candidateDirection) => state.world.cells[targetId].exits[candidateDirection] === ant.cellId)
+      const nextFacing = backwardDirection ? oppositeDirection[backwardDirection] : direction
+
       const nextAnt = {
         ...ant,
         cellId: targetId,
-        facing: direction,
+        facing: nextFacing,
         recoveryTicks: 1,
       }
       nextAnts.push(nextAnt)
