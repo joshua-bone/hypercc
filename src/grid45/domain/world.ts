@@ -11,9 +11,11 @@ import {
   type AreaDagNode,
   type CellFeature,
   type CellKind,
+  type Direction,
   type DirectionMap,
   type KeyColor,
   type MazeCell,
+  type MonsterState,
   type MazeWorld,
 } from './model'
 
@@ -23,6 +25,7 @@ const GATE_CANDIDATE_LIMIT = 20
 const FRONTIER_SAMPLE_COUNT = 6
 const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
 const DEFAULT_ANT_COUNT = 1
+const DEFAULT_PINK_BALL_COUNT = 1
 const KEY_COLORS: KeyColor[] = ['blue', 'red', 'yellow', 'green']
 
 export const worldSizes = ['tiny', 'small', 'medium', 'large', 'huge'] as const
@@ -82,11 +85,13 @@ const worldSizeConfigs: Record<WorldSize, WorldSizeConfig> = {
 
 export const defaultWorldSize = DEFAULT_WORLD_SIZE
 export const defaultAntCount = DEFAULT_ANT_COUNT
+export const defaultPinkBallCount = DEFAULT_PINK_BALL_COUNT
 
 type CreateGrid45WorldOptions = {
   seed: number
   size?: WorldSize
   antCount?: number
+  pinkBallCount?: number
   maxCells?: number
   maxCenterRadius?: number
 }
@@ -1127,12 +1132,48 @@ function rotateCell(cell: HyperCell): Pick<MazeCell, 'id' | 'center' | 'vertices
   }
 }
 
-function buildInitialAnts(cells: MazeCell[], startCellId: number, antCount: number, seed: number): MazeWorld['initialAnts'] {
-  if (antCount <= 0) return []
+const oppositeDirection: DirectionMap<Direction> = {
+  north: 'south',
+  east: 'west',
+  south: 'north',
+  west: 'east',
+}
+
+function nextFacingFromMove(cells: Pick<MazeCell, 'exits'>[], previousCellId: number, nextCellId: number, fallback: Direction): Direction {
+  const backwardDirection = directions.find((direction) => cells[nextCellId].exits[direction] === previousCellId)
+  return backwardDirection ? oppositeDirection[backwardDirection] : fallback
+}
+
+function isPlainMonsterFloor(cell: Pick<MazeCell, 'kind' | 'feature'>): boolean {
+  return cell.kind === 'floor' && cell.feature === 'none'
+}
+
+function hasOpenRun(cells: MazeCell[], startCellId: number, facing: Direction, requiredSteps: number): boolean {
+  let currentCellId = startCellId
+  let currentFacing = facing
+
+  for (let step = 0; step < requiredSteps; step += 1) {
+    const targetId = cells[currentCellId].exits[currentFacing]
+    if (targetId === null || !isPlainMonsterFloor(cells[targetId])) return false
+    currentFacing = nextFacingFromMove(cells, currentCellId, targetId, currentFacing)
+    currentCellId = targetId
+  }
+
+  return true
+}
+
+function buildInitialMonsters(
+  cells: MazeCell[],
+  startCellId: number,
+  antCount: number,
+  pinkBallCount: number,
+  seed: number,
+): MazeWorld['initialMonsters'] {
+  if (antCount <= 0 && pinkBallCount <= 0) return []
 
   const rng = mulberry32(seed)
   const candidateCellIds = cells
-    .filter((cell) => cell.kind === 'floor' && cell.feature === 'none' && cell.id !== startCellId)
+    .filter((cell) => isPlainMonsterFloor(cell) && cell.id !== startCellId)
     .map((cell) => cell.id)
 
   for (let index = candidateCellIds.length - 1; index > 0; index -= 1) {
@@ -1142,18 +1183,52 @@ function buildInitialAnts(cells: MazeCell[], startCellId: number, antCount: numb
     candidateCellIds[swapIndex] = temp
   }
 
-  const spawnCount = Math.min(Math.max(0, Math.floor(antCount)), candidateCellIds.length)
-  return candidateCellIds.slice(0, spawnCount).map((cellId, id) => ({
-    id,
-    cellId,
-    facing: directions[Math.floor(rng() * directions.length)],
-    recoveryTicks: 0,
-  }))
+  const monsters: MonsterState[] = []
+  const occupiedCellIds = new Set<number>()
+  let antPlaced = 0
+  let pinkBallPlaced = 0
+  let nextId = 0
+
+  for (const cellId of candidateCellIds) {
+    if (pinkBallPlaced >= pinkBallCount) break
+    if (occupiedCellIds.has(cellId)) continue
+
+    const validFacingDirections = directions.filter((direction) => hasOpenRun(cells, cellId, direction, 4))
+    if (validFacingDirections.length === 0) continue
+
+    monsters.push({
+      id: nextId++,
+      kind: 'pink-ball',
+      cellId,
+      facing: validFacingDirections[Math.floor(rng() * validFacingDirections.length)],
+      recoveryTicks: 0,
+    })
+    pinkBallPlaced += 1
+    occupiedCellIds.add(cellId)
+  }
+
+  for (const cellId of candidateCellIds) {
+    if (antPlaced >= antCount) break
+    if (occupiedCellIds.has(cellId)) continue
+
+    monsters.push({
+      id: nextId++,
+      kind: 'ant',
+      cellId,
+      facing: directions[Math.floor(rng() * directions.length)],
+      recoveryTicks: 0,
+    })
+    antPlaced += 1
+    occupiedCellIds.add(cellId)
+  }
+
+  return monsters
 }
 
 export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld {
   const size = options.size ?? DEFAULT_WORLD_SIZE
   const antCount = Math.max(0, Math.floor(options.antCount ?? DEFAULT_ANT_COUNT))
+  const pinkBallCount = Math.max(0, Math.floor(options.pinkBallCount ?? DEFAULT_PINK_BALL_COUNT))
   const config = worldSizeConfigs[size]
   const maxCells = options.maxCells ?? config.maxCells
   const maxCenterRadius = options.maxCenterRadius ?? config.maxCenterRadius
@@ -1215,7 +1290,7 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
       socketCellId: progression.layout.socketCellId,
       exitCellId: progression.layout.exitCellId,
       areaDag: progression.layout.areaDag,
-      initialAnts: buildInitialAnts(cells, startCellId, antCount, mixSeed(attemptSeed, 811)),
+      initialMonsters: buildInitialMonsters(cells, startCellId, antCount, pinkBallCount, mixSeed(attemptSeed, 811)),
       cells,
     }
   }

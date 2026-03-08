@@ -22,6 +22,7 @@ export type TickOutcome = 'moved' | 'blocked' | 'resting' | 'locked' | 'complete
 
 export type DirectionMap<T> = Record<Direction, T>
 export type KeyInventory = Record<KeyColor, number>
+export type MonsterKind = 'ant' | 'pink-ball'
 
 export type AreaDagNode = {
   id: number
@@ -63,8 +64,9 @@ export type MazeCell = {
   exits: DirectionMap<number | null>
 }
 
-export type AntState = {
+export type MonsterState = {
   id: number
+  kind: MonsterKind
   cellId: number
   facing: Direction
   recoveryTicks: number
@@ -77,7 +79,7 @@ export type MazeWorld = {
   socketCellId: number
   exitCellId: number
   areaDag: AreaDag
-  initialAnts: AntState[]
+  initialMonsters: MonsterState[]
 }
 
 export type GameState = {
@@ -88,7 +90,7 @@ export type GameState = {
   recoveryTicks: number
   lastIntent: MoveIntent
   lastOutcome: TickOutcome
-  ants: AntState[]
+  monsters: MonsterState[]
   remainingChipCellIds: Set<number>
   collectedKeyCellIds: Set<number>
   openedDoorCellIds: Set<number>

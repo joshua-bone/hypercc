@@ -4,10 +4,11 @@ import {
   createEmptyKeyInventory,
   doorColorFromFeature,
   keyColorFromFeature,
-  type AntState,
   type Direction,
+  type DirectionMap,
   type GameState,
   type MazeWorld,
+  type MonsterState,
   type MoveIntent,
   type TickOutcome,
 } from './model'
@@ -19,20 +20,20 @@ const antTurnPriority: Record<Direction, Direction[]> = {
   west: ['south', 'west', 'north', 'east'],
 }
 
-const oppositeDirection: Record<Direction, Direction> = {
+const oppositeDirection: DirectionMap<Direction> = {
   north: 'south',
   east: 'west',
   south: 'north',
   west: 'east',
 }
 
-type AntTraversalState = Pick<
+type MonsterTraversalState = Pick<
   GameState,
   'world' | 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'
 >
 
-type AntAdvanceResult = {
-  ants: AntState[]
+type MonsterAdvanceResult = {
+  monsters: MonsterState[]
   playerDead: boolean
 }
 
@@ -45,7 +46,7 @@ export function createInitialGameState(world: MazeWorld): GameState {
     recoveryTicks: 0,
     lastIntent: 'stay',
     lastOutcome: 'resting',
-    ants: world.initialAnts.map((ant) => ({ ...ant })),
+    monsters: world.initialMonsters.map((monster) => ({ ...monster })),
     remainingChipCellIds: new Set(world.chipCellIds),
     collectedKeyCellIds: new Set<number>(),
     openedDoorCellIds: new Set<number>(),
@@ -66,8 +67,8 @@ function canEnterCell(state: GameState, targetId: number): boolean {
   return true
 }
 
-function antCanEnterCell(
-  state: AntTraversalState,
+function monsterCanEnterCell(
+  state: MonsterTraversalState,
   targetId: number,
   playerCellId: number,
   occupiedCellIds: Set<number>,
@@ -89,48 +90,55 @@ function antCanEnterCell(
   return cell.feature === 'none'
 }
 
-function advanceAnts(
-  state: AntTraversalState,
-  ants: AntState[],
+function nextFacingFromMove(world: MazeWorld, previousCellId: number, nextCellId: number, fallback: Direction): Direction {
+  const backwardDirection = directions.find((direction) => world.cells[nextCellId].exits[direction] === previousCellId)
+  return backwardDirection ? oppositeDirection[backwardDirection] : fallback
+}
+
+function moveOrderForMonster(monster: MonsterState): Direction[] {
+  if (monster.kind === 'pink-ball') return [monster.facing, oppositeDirection[monster.facing]]
+  return antTurnPriority[monster.facing]
+}
+
+function advanceMonsters(
+  state: MonsterTraversalState,
+  monsters: MonsterState[],
   playerCellId: number,
-): AntAdvanceResult {
-  const nextAnts: AntState[] = []
-  const occupiedCellIds = new Set(ants.map((ant) => ant.cellId))
+): MonsterAdvanceResult {
+  const nextMonsters: MonsterState[] = []
+  const occupiedCellIds = new Set(monsters.map((monster) => monster.cellId))
 
-  for (let antIndex = 0; antIndex < ants.length; antIndex += 1) {
-    const ant = ants[antIndex]
-    occupiedCellIds.delete(ant.cellId)
+  for (let monsterIndex = 0; monsterIndex < monsters.length; monsterIndex += 1) {
+    const monster = monsters[monsterIndex]
+    occupiedCellIds.delete(monster.cellId)
 
-    if (ant.recoveryTicks > 0) {
-      nextAnts.push({
-        ...ant,
-        recoveryTicks: ant.recoveryTicks - 1,
+    if (monster.recoveryTicks > 0) {
+      nextMonsters.push({
+        ...monster,
+        recoveryTicks: monster.recoveryTicks - 1,
       })
-      occupiedCellIds.add(ant.cellId)
+      occupiedCellIds.add(monster.cellId)
       continue
     }
 
-    const cell = state.world.cells[ant.cellId]
+    const cell = state.world.cells[monster.cellId]
     let moved = false
 
-    for (const direction of antTurnPriority[ant.facing]) {
+    for (const direction of moveOrderForMonster(monster)) {
       const targetId = cell.exits[direction]
-      if (targetId === null || !antCanEnterCell(state, targetId, playerCellId, occupiedCellIds)) continue
+      if (targetId === null || !monsterCanEnterCell(state, targetId, playerCellId, occupiedCellIds)) continue
 
-      const backwardDirection = directions.find((candidateDirection) => state.world.cells[targetId].exits[candidateDirection] === ant.cellId)
-      const nextFacing = backwardDirection ? oppositeDirection[backwardDirection] : direction
-
-      const nextAnt = {
-        ...ant,
+      const nextMonster = {
+        ...monster,
         cellId: targetId,
-        facing: nextFacing,
+        facing: nextFacingFromMove(state.world, monster.cellId, targetId, direction),
         recoveryTicks: 1,
       }
-      nextAnts.push(nextAnt)
+      nextMonsters.push(nextMonster)
 
       if (targetId === playerCellId) {
         return {
-          ants: [...nextAnts, ...ants.slice(antIndex + 1).map((remainingAnt) => ({ ...remainingAnt }))],
+          monsters: [...nextMonsters, ...monsters.slice(monsterIndex + 1).map((remainingMonster) => ({ ...remainingMonster }))],
           playerDead: true,
         }
       }
@@ -142,12 +150,12 @@ function advanceAnts(
 
     if (moved) continue
 
-    nextAnts.push({ ...ant })
-    occupiedCellIds.add(ant.cellId)
+    nextMonsters.push({ ...monster })
+    occupiedCellIds.add(monster.cellId)
   }
 
   return {
-    ants: nextAnts,
+    monsters: nextMonsters,
     playerDead: false,
   }
 }
@@ -158,7 +166,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   let cameraAngle = state.cameraAngle
   let recoveryTicks = state.recoveryTicks
   let lastOutcome: TickOutcome = 'resting'
-  let ants = state.ants
+  let monsters = state.monsters
   let remainingChipCellIds = state.remainingChipCellIds
   let collectedKeyCellIds = state.collectedKeyCellIds
   let openedDoorCellIds = state.openedDoorCellIds
@@ -207,8 +215,8 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
       cameraAngle = cameraAngleForMove(state.world.cells[playerCellId].center, targetCell.center, intent)
       playerCellId = targetId
 
-      const collidedWithAnt = state.ants.some((ant) => ant.cellId === targetId)
-      if (collidedWithAnt) {
+      const collidedWithMonster = state.monsters.some((monster) => monster.cellId === targetId)
+      if (collidedWithMonster) {
         playerDead = true
         lastOutcome = 'dead'
         recoveryTicks = 0
@@ -241,7 +249,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   }
 
   if (!playerDead && !levelComplete) {
-    const antAdvance = advanceAnts(
+    const monsterAdvance = advanceMonsters(
       {
         world: state.world,
         remainingChipCellIds,
@@ -249,11 +257,11 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         openedDoorCellIds,
         socketCleared,
       },
-      ants,
+      monsters,
       playerCellId,
     )
-    ants = antAdvance.ants
-    if (antAdvance.playerDead) {
+    monsters = monsterAdvance.monsters
+    if (monsterAdvance.playerDead) {
       playerDead = true
       recoveryTicks = 0
       lastOutcome = 'dead'
@@ -269,7 +277,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
     recoveryTicks,
     lastIntent: intent,
     lastOutcome,
-    ants,
+    monsters,
     remainingChipCellIds,
     collectedKeyCellIds,
     openedDoorCellIds,

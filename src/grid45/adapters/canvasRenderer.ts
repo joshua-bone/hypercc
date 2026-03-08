@@ -4,7 +4,7 @@ import { toCameraView } from '../domain/camera'
 import { directionVectors } from '../domain/directions'
 import { doorColorFromFeature, keyColorFromFeature } from '../domain/model'
 import type { Grid45Tileset } from './spriteAtlas'
-import type { AntState, Direction, GameState, MazeCell } from '../domain/model'
+import type { Direction, GameState, MazeCell, MonsterState } from '../domain/model'
 
 type ScreenPoint = {
   x: number
@@ -165,14 +165,14 @@ function shapeCenter(shape: ProjectedShape): ScreenPoint {
   }
 }
 
-function antSpriteFacing(ant: AntState, state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>): Direction {
-  const antCell = state.world.cells[ant.cellId]
-  const sideIndex = assignDirectionSides(antCell.vertices, antCell.center)[ant.facing]
-  const sideMidpoint = midpoint(antCell.vertices[sideIndex], antCell.vertices[(sideIndex + 1) % antCell.vertices.length])
+function monsterScreenFacing(monster: MonsterState, state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>): Direction {
+  const monsterCell = state.world.cells[monster.cellId]
+  const sideIndex = assignDirectionSides(monsterCell.vertices, monsterCell.center)[monster.facing]
+  const sideMidpoint = midpoint(monsterCell.vertices[sideIndex], monsterCell.vertices[(sideIndex + 1) % monsterCell.vertices.length])
   const playerCenter = state.world.cells[state.playerCellId].center
-  const antView = toCameraView(antCell.center, playerCenter, state.cameraAngle)
+  const monsterView = toCameraView(monsterCell.center, playerCenter, state.cameraAngle)
   const facingView = toCameraView(sideMidpoint, playerCenter, state.cameraAngle)
-  return directionFromViewDelta(facingView.x - antView.x, facingView.y - antView.y)
+  return directionFromViewDelta(facingView.x - monsterView.x, facingView.y - monsterView.y)
 }
 
 function traceCellPath(ctx: CanvasRenderingContext2D, outline: ProjectedOutline): void {
@@ -427,27 +427,28 @@ export function renderGrid45Scene(
     }
   }
 
-  for (const ant of state.ants) {
-    const antShape = projectedCells[ant.cellId]?.shape
-    if (!antShape) continue
+  for (const monster of state.monsters) {
+    const monsterShape = projectedCells[monster.cellId]?.shape
+    if (!monsterShape) continue
 
-    const antCenter = shapeCenter(antShape)
-    const { minX, minY, maxX, maxY } = outlineBounds(antShape.outline)
+    const monsterCenter = shapeCenter(monsterShape)
+    const { minX, minY, maxX, maxY } = outlineBounds(monsterShape.outline)
     const spriteSize = Math.max(18, Math.min(54, Math.min(maxX - minX, maxY - minY) * 0.3))
 
     if (tileset) {
+      const sprite = monster.kind === 'pink-ball' ? tileset.pinkBallSprite : tileset.antSprites[monsterScreenFacing(monster, state)]
       ctx.imageSmoothingEnabled = false
       ctx.drawImage(
-        tileset.antSprites[antSpriteFacing(ant, state)],
-        antCenter.x - spriteSize / 2,
-        antCenter.y - spriteSize / 2,
+        sprite,
+        monsterCenter.x - spriteSize / 2,
+        monsterCenter.y - spriteSize / 2,
         spriteSize,
         spriteSize,
       )
     } else {
-      ctx.fillStyle = '#7b311d'
+      ctx.fillStyle = monster.kind === 'pink-ball' ? '#ff71c4' : '#7b311d'
       ctx.beginPath()
-      ctx.arc(antCenter.x, antCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
+      ctx.arc(monsterCenter.x, monsterCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
       ctx.fill()
     }
   }

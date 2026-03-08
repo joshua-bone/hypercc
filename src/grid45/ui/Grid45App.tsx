@@ -5,7 +5,7 @@ import { createIntervalClock } from '../adapters/intervalClock'
 import { attachKeyboardIntent } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { keyColors, type GameState, type KeyColor } from '../domain/model'
-import { defaultAntCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
+import { defaultAntCount, defaultPinkBallCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
 
 const MIN_ANT_COUNT = 0
 const MAX_ANT_COUNT = 128
@@ -44,6 +44,7 @@ function createSession(): Grid45Session {
     },
     initialWorldSize: defaultWorldSize,
     initialAntCount: defaultAntCount,
+    initialPinkBallCount: defaultPinkBallCount,
   })
 }
 
@@ -177,10 +178,12 @@ export default function Grid45App() {
   const [showDagValidator, setShowDagValidator] = useState(false)
   const [worldSize, setWorldSize] = useState<WorldSize>(defaultWorldSize)
   const [antCount, setAntCount] = useState<number>(defaultAntCount)
+  const [pinkBallCount, setPinkBallCount] = useState<number>(defaultPinkBallCount)
   const totalChips = snapshot.world.chipCellIds.length
   const chipsRemaining = snapshot.remainingChipCellIds.size
   const chipsCollected = totalChips - chipsRemaining
-  const antTotal = snapshot.world.initialAnts.length
+  const antTotal = snapshot.world.initialMonsters.filter((monster) => monster.kind === 'ant').length
+  const pinkBallTotal = snapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
   const showDevToggle = import.meta.env.DEV
 
   useEffect(() => {
@@ -251,6 +254,7 @@ export default function Grid45App() {
         <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
         <div className="grid45Metrics">Keys: {formatKeyInventory(snapshot)}</div>
         <div className="grid45Metrics">Ants: {antTotal}</div>
+        <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
         <div className="grid45Metrics">Exit: {snapshot.levelComplete ? 'reached' : 'active'}</div>
         <div className="grid45Metrics">Move lock: {snapshot.recoveryTicks > 0 ? 'armed for next tick' : 'ready'}</div>
         {showDevToggle ? (
@@ -302,7 +306,28 @@ export default function Grid45App() {
             </div>
             <span className="grid45AntValue">{antCount}</span>
           </label>
-          <button className="grid45Button" onClick={() => session.reset(worldSize, antCount)}>
+          <label className="grid45SelectLabel grid45AntControl">
+            <span>Pink Balls</span>
+            <div className="grid45AntRow">
+              <button className="grid45Button grid45StepButton" type="button" onClick={() => setPinkBallCount((count) => Math.max(MIN_ANT_COUNT, count - 1))}>
+                -
+              </button>
+              <input
+                className="grid45Slider"
+                type="range"
+                min={MIN_ANT_COUNT}
+                max={MAX_ANT_COUNT}
+                step={1}
+                value={pinkBallCount}
+                onChange={(event) => setPinkBallCount(Number(event.target.value))}
+              />
+              <button className="grid45Button grid45StepButton" type="button" onClick={() => setPinkBallCount((count) => Math.min(MAX_ANT_COUNT, count + 1))}>
+                +
+              </button>
+            </div>
+            <span className="grid45AntValue">{pinkBallCount}</span>
+          </label>
+          <button className="grid45Button" onClick={() => session.reset(worldSize, antCount, pinkBallCount)}>
             Generate Maze
           </button>
         </div>
