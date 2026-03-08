@@ -433,7 +433,7 @@ export function renderGrid45Scene(
 
     const monsterCenter = shapeCenter(monsterShape)
     const { minX, minY, maxX, maxY } = outlineBounds(monsterShape.outline)
-    const spriteSize = Math.max(18, Math.min(54, Math.min(maxX - minX, maxY - minY) * 0.3))
+    const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
 
     if (tileset) {
       const sprite = monster.kind === 'pink-ball' ? tileset.pinkBallSprite : tileset.antSprites[monsterScreenFacing(monster, state)]
