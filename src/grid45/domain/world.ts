@@ -1246,6 +1246,7 @@ function buildInitialMonsters(
 }
 
 export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld {
+  const seed = Math.floor(options.seed) >>> 0
   const size = options.size ?? DEFAULT_WORLD_SIZE
   const antCount = Math.max(0, Math.floor(options.antCount ?? DEFAULT_ANT_COUNT))
   const pinkBallCount = Math.max(0, Math.floor(options.pinkBallCount ?? DEFAULT_PINK_BALL_COUNT))
@@ -1285,7 +1286,7 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
   const failureCounts = new Map<string, number>()
 
   for (let attempt = 0; attempt < WORLD_GENERATION_ATTEMPTS; attempt += 1) {
-    const attemptSeed = mixSeed(options.seed, attempt + 1)
+    const attemptSeed = mixSeed(seed, attempt + 1)
     const graphPlan = buildRoomGraphPlan(config, mixSeed(attemptSeed, 11))
     const roomLayout = buildRoomLayout(draftCells, graph, startCellId, config, graphPlan, mixSeed(attemptSeed, 23))
     if (!roomLayout.layout) {
@@ -1306,6 +1307,7 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
     }))
 
     return {
+      seed,
       startCellId,
       chipCellIds: progression.layout.chipCellIds,
       socketCellId: progression.layout.socketCellId,

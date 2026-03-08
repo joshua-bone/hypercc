@@ -73,6 +73,7 @@ export type MonsterState = {
 }
 
 export type MazeWorld = {
+  seed: number
   cells: MazeCell[]
   startCellId: number
   chipCellIds: number[]

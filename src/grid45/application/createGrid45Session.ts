@@ -8,7 +8,7 @@ export type Grid45Session = {
   subscribe(listener: (state: GameState) => void): () => void
   setIntent(intent: MoveIntent): void
   restart(): void
-  reset(size?: WorldSize, antCount?: number, pinkBallCount?: number, teethCount?: number): void
+  reset(size?: WorldSize, antCount?: number, pinkBallCount?: number, teethCount?: number, seed?: number): void
   start(): void
   stop(): void
 }
@@ -36,7 +36,8 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
   let antCount = initialAntCount
   let pinkBallCount = initialPinkBallCount
   let teethCount = initialTeethCount
-  const createWorld = () => createGrid45World({ seed: seedPort.nextSeed(), size: worldSize, antCount, pinkBallCount, teethCount })
+  const createWorld = (seedOverride?: number) =>
+    createGrid45World({ seed: seedOverride ?? seedPort.nextSeed(), size: worldSize, antCount, pinkBallCount, teethCount })
   let currentWorld = createWorld()
 
   let state = createInitialGameState(currentWorld)
@@ -91,14 +92,14 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
       state = createInitialGameState(currentWorld)
       emit()
     },
-    reset(size = worldSize, nextAntCount = antCount, nextPinkBallCount = pinkBallCount, nextTeethCount = teethCount) {
+    reset(size = worldSize, nextAntCount = antCount, nextPinkBallCount = pinkBallCount, nextTeethCount = teethCount, seedOverride) {
       worldSize = size
       antCount = nextAntCount
       pinkBallCount = nextPinkBallCount
       teethCount = nextTeethCount
       haltClock()
       pendingIntent = 'stay'
-      currentWorld = createWorld()
+      currentWorld = createWorld(seedOverride)
       state = createInitialGameState(currentWorld)
       emit()
     },

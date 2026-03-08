@@ -186,6 +186,17 @@ body {
   letter-spacing: normal;
 }
 
+.grid45SeedInput {
+  min-width: 130px;
+  padding: 10px 12px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.9);
+  color: inherit;
+  font: inherit;
+  letter-spacing: normal;
+}
+
 .grid45AntControl {
   min-width: 180px;
 }

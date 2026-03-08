@@ -36,6 +36,16 @@ function nextSeed(): number {
   return (Date.now() >>> 0) ^ ((Math.random() * 0xffffffff) >>> 0)
 }
 
+function parseSeedInput(seedInput: string): number | undefined {
+  const trimmed = seedInput.trim()
+  if (trimmed.length === 0) return undefined
+
+  const parsed = Number(trimmed)
+  if (!Number.isFinite(parsed)) return undefined
+
+  return Math.floor(parsed) >>> 0
+}
+
 function createSession(): Grid45Session {
   return createGrid45Session({
     clock: createIntervalClock(10),
@@ -182,6 +192,7 @@ export default function Grid45App() {
   const [antCount, setAntCount] = useState<number>(defaultAntCount)
   const [pinkBallCount, setPinkBallCount] = useState<number>(defaultPinkBallCount)
   const [teethCount, setTeethCount] = useState<number>(defaultTeethCount)
+  const [seedInput, setSeedInput] = useState('')
   const totalChips = snapshot.world.chipCellIds.length
   const chipsRemaining = snapshot.remainingChipCellIds.size
   const chipsCollected = totalChips - chipsRemaining
@@ -251,7 +262,9 @@ export default function Grid45App() {
     playAgainButtonRef.current?.focus()
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' && event.key !== ' ' && event.key !== 'Spacebar') return
+      const isSpace = event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar'
+      const isEnter = event.code === 'Enter' || event.key === 'Enter'
+      if (!isSpace && !isEnter) return
       event.preventDefault()
       session.restart()
     }
@@ -262,13 +275,18 @@ export default function Grid45App() {
     }
   }, [showEndOverlay, session])
 
+  const generateNewMap = () => {
+    session.reset(worldSize, antCount, pinkBallCount, teethCount, parseSeedInput(seedInput))
+    setSeedInput('')
+  }
+
   return (
     <div className="grid45App">
       <canvas ref={canvasRef} className="grid45Canvas" />
       {showEndOverlay ? (
         <div className={`grid45EndOverlay${snapshot.playerDead ? ' grid45EndOverlayLose' : ''}`}>
           <div className="grid45EndTitle">{endTitle}</div>
-          <div className="grid45EndCopy">Press Space to play again on this same map.</div>
+          <div className="grid45EndCopy">Press Space or Enter to play again on this same map.</div>
           <div className="grid45EndActions">
             <button ref={playAgainButtonRef} className="grid45Button grid45ButtonPrimary" type="button" onClick={() => session.restart()}>
               Play Again
@@ -276,7 +294,7 @@ export default function Grid45App() {
             <button
               className="grid45Button"
               type="button"
-              onClick={() => session.reset(worldSize, antCount, pinkBallCount, teethCount)}
+              onClick={generateNewMap}
             >
               Play Another
             </button>
@@ -296,6 +314,7 @@ export default function Grid45App() {
         <div className="grid45Metrics">Ants: {antTotal}</div>
         <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
         <div className="grid45Metrics">Teeth: {teethTotal}</div>
+        <div className="grid45Metrics">Seed: {snapshot.world.seed}</div>
         <div className="grid45Metrics">Exit: {snapshot.levelComplete ? 'reached' : 'active'}</div>
         <div className="grid45Metrics">Move lock: {snapshot.recoveryTicks > 0 ? 'armed for next tick' : 'ready'}</div>
         {showDevToggle ? (
@@ -325,6 +344,17 @@ export default function Grid45App() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="grid45SelectLabel">
+            <span>Seed</span>
+            <input
+              className="grid45SeedInput"
+              type="text"
+              inputMode="numeric"
+              placeholder="Random"
+              value={seedInput}
+              onChange={(event) => setSeedInput(event.target.value)}
+            />
           </label>
           <label className="grid45SelectLabel grid45AntControl">
             <span>Ants</span>
@@ -389,7 +419,7 @@ export default function Grid45App() {
             </div>
             <span className="grid45AntValue">{teethCount}</span>
           </label>
-          <button className="grid45Button" onClick={() => session.reset(worldSize, antCount, pinkBallCount, teethCount)}>
+          <button className="grid45Button" onClick={generateNewMap}>
             Generate Maze
           </button>
         </div>
