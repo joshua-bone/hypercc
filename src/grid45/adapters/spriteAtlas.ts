@@ -146,9 +146,9 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
     },
     antSprites: {
       north: applyMask(drawTile(image, { col: 8, row: antTileRows.north }), drawTile(image, { col: 11, row: antTileRows.north })),
-      east: applyMask(drawTile(image, { col: 8, row: antTileRows.east }), drawTile(image, { col: 11, row: antTileRows.east })),
+      east: applyMask(drawTile(image, { col: 8, row: antTileRows.west }), drawTile(image, { col: 11, row: antTileRows.west })),
       south: applyMask(drawTile(image, { col: 8, row: antTileRows.south }), drawTile(image, { col: 11, row: antTileRows.south })),
-      west: applyMask(drawTile(image, { col: 8, row: antTileRows.west }), drawTile(image, { col: 11, row: antTileRows.west })),
+      west: applyMask(drawTile(image, { col: 8, row: antTileRows.east }), drawTile(image, { col: 11, row: antTileRows.east })),
     },
     teethSprites: {
       north: applyMask(drawTile(image, { col: 9, row: teethTileRows.north }), drawTile(image, { col: 12, row: teethTileRows.north })),
