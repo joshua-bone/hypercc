@@ -17,6 +17,18 @@ type ProjectedShape = {
   corners: ScreenPoint[]
 }
 
+type ProjectedCell = {
+  cell: MazeCell
+  shape: ProjectedShape
+}
+
+export type Grid45RenderOptions = {
+  cameraCellId?: number
+  cameraAngle?: number
+  highlightCellId?: number | null
+  showPlayer?: boolean
+}
+
 function midpoint(a: Vec2, b: Vec2): Vec2 {
   return {
     x: (a.x + b.x) / 2,
@@ -81,6 +93,32 @@ function traceProjectedPath(ctx: CanvasRenderingContext2D, outline: ProjectedOut
   }
 
   ctx.closePath()
+}
+
+function outlinePolygon(outline: ProjectedOutline): ScreenPoint[] {
+  const polygon: ScreenPoint[] = []
+  for (const segment of outline) {
+    for (let index = 0; index < segment.length; index += 1) {
+      if (polygon.length > 0 && index === 0) continue
+      polygon.push(segment[index])
+    }
+  }
+  return polygon
+}
+
+function pointInPolygon(point: ScreenPoint, polygon: ScreenPoint[]): boolean {
+  let inside = false
+
+  for (let index = 0, previousIndex = polygon.length - 1; index < polygon.length; previousIndex = index, index += 1) {
+    const current = polygon[index]
+    const previous = polygon[previousIndex]
+    const intersects =
+      current.y > point.y !== previous.y > point.y &&
+      point.x < ((previous.x - current.x) * (point.y - current.y)) / ((previous.y - current.y) || 1e-9) + current.x
+    if (intersects) inside = !inside
+  }
+
+  return inside
 }
 
 function outlineBounds(outline: ProjectedOutline): { minX: number; minY: number; maxX: number; maxY: number } {
@@ -165,13 +203,19 @@ function shapeCenter(shape: ProjectedShape): ScreenPoint {
   }
 }
 
-function monsterScreenFacing(monster: MonsterState, state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>): Direction {
+function monsterScreenFacing(
+  monster: MonsterState,
+  state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraAngle'>,
+): Direction {
   const monsterCell = state.world.cells[monster.cellId]
   const sideIndex = assignDirectionSides(monsterCell.vertices, monsterCell.center)[monster.facing]
   const sideMidpoint = midpoint(monsterCell.vertices[sideIndex], monsterCell.vertices[(sideIndex + 1) % monsterCell.vertices.length])
-  const playerCenter = state.world.cells[state.playerCellId].center
-  const monsterView = toCameraView(monsterCell.center, playerCenter, state.cameraAngle)
-  const facingView = toCameraView(sideMidpoint, playerCenter, state.cameraAngle)
+  const cameraCellId = options?.cameraCellId ?? state.playerCellId
+  const cameraAngle = options?.cameraAngle ?? state.cameraAngle
+  const cameraCenter = state.world.cells[cameraCellId].center
+  const monsterView = toCameraView(monsterCell.center, cameraCenter, cameraAngle)
+  const facingView = toCameraView(sideMidpoint, cameraCenter, cameraAngle)
   return directionFromViewDelta(facingView.x - monsterView.x, facingView.y - monsterView.y)
 }
 
@@ -380,19 +424,71 @@ export function resizeCanvasToDisplaySize(
   }
 }
 
+function projectWorldCells(
+  world: GameState['world'],
+  viewCellId: number,
+  cameraAngle: number,
+  width: number,
+  height: number,
+): { centerX: number; centerY: number; diskRadius: number; projectedCells: ProjectedCell[] } {
+  const diskRadius = Math.max(1, Math.min(width, height) * 0.45)
+  const centerX = width / 2
+  const centerY = height / 2
+  const viewCenter = world.cells[viewCellId].center
+  const projectedCells = world.cells.map((cell) => ({
+    cell,
+    shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
+  }))
+
+  return {
+    centerX,
+    centerY,
+    diskRadius,
+    projectedCells,
+  }
+}
+
+export function pickGrid45CellAtPoint(
+  state: Pick<GameState, 'world' | 'playerCellId' | 'cameraAngle'>,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraAngle'>,
+): number | null {
+  const cameraCellId = options?.cameraCellId ?? state.playerCellId
+  const cameraAngle = options?.cameraAngle ?? state.cameraAngle
+  const { projectedCells } = projectWorldCells(state.world, cameraCellId, cameraAngle, width, height)
+
+  let bestMatch: { cellId: number; distance: number } | null = null
+
+  for (const projected of projectedCells) {
+    if (!pointInPolygon({ x, y }, outlinePolygon(projected.shape.outline))) continue
+
+    const center = shapeCenter(projected.shape)
+    const distance = Math.hypot(center.x - x, center.y - y)
+    if (!bestMatch || distance < bestMatch.distance) {
+      bestMatch = {
+        cellId: projected.cell.id,
+        distance,
+      }
+    }
+  }
+
+  return bestMatch?.cellId ?? null
+}
+
 export function renderGrid45Scene(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   width: number,
   height: number,
   tileset?: Grid45Tileset | null,
+  options?: Grid45RenderOptions,
 ): void {
-  const diskRadius = Math.max(1, Math.min(width, height) * 0.45)
-  const centerX = width / 2
-  const centerY = height / 2
-  const playerCell = state.world.cells[state.playerCellId]
-  const playerCenter = playerCell.center
-  const cameraAngle = state.cameraAngle
+  const cameraCellId = options?.cameraCellId ?? state.playerCellId
+  const cameraAngle = options?.cameraAngle ?? state.cameraAngle
+  const { diskRadius, centerX, centerY, projectedCells } = projectWorldCells(state.world, cameraCellId, cameraAngle, width, height)
 
   ctx.fillStyle = '#05080c'
   ctx.fillRect(0, 0, width, height)
@@ -410,11 +506,6 @@ export function renderGrid45Scene(
 
   ctx.fillStyle = '#0d1319'
   ctx.fillRect(centerX - diskRadius, centerY - diskRadius, diskRadius * 2, diskRadius * 2)
-
-  const projectedCells = state.world.cells.map((cell) => ({
-    cell,
-    shape: projectCellShape(cell, playerCenter, cameraAngle, centerX, centerY, diskRadius),
-  }))
 
   for (const projected of projectedCells) {
     fillCell(ctx, projected.shape.outline, tileset ? baseFillForCell(projected.cell.kind) : projected.cell.kind === 'floor' ? '#d3d7de' : '#363d46')
@@ -436,7 +527,7 @@ export function renderGrid45Scene(
     const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
 
     if (tileset) {
-      const screenFacing = monsterScreenFacing(monster, state)
+      const screenFacing = monsterScreenFacing(monster, state, { cameraCellId, cameraAngle })
       const sprite =
         monster.kind === 'pink-ball' ? tileset.pinkBallSprite :
         monster.kind === 'teeth' ? tileset.teethSprites[screenFacing] :
@@ -459,26 +550,42 @@ export function renderGrid45Scene(
       ctx.fill()
     }
   }
-
-  const playerShape = projectedCells[playerCell.id].shape
-  if (!tileset) fillCell(ctx, playerShape.outline, '#ffd166')
-
   ctx.strokeStyle = tileset ? 'rgba(36, 36, 36, 0.18)' : 'rgba(5, 8, 12, 0.28)'
   ctx.lineWidth = tileset ? 0.8 : 1
   for (const projected of projectedCells) {
     strokeCell(ctx, projected.shape.outline)
   }
 
-  if (tileset) {
-    const { minX, minY, maxX, maxY } = outlineBounds(playerShape.outline)
-    const spriteSize = Math.max(36, Math.min(96, Math.min(maxX - minX, maxY - minY) * 0.42))
-    ctx.imageSmoothingEnabled = false
-    ctx.drawImage(tileset.playerSprites[state.playerFacing], centerX - spriteSize / 2, centerY - spriteSize / 2, spriteSize, spriteSize)
-  } else {
-    ctx.fillStyle = '#2a1d00'
-    ctx.beginPath()
-    ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI)
-    ctx.fill()
+  if (options?.highlightCellId !== undefined && options.highlightCellId !== null) {
+    const highlightShape = projectedCells[options.highlightCellId]?.shape
+    if (highlightShape) {
+      ctx.strokeStyle = 'rgba(255, 209, 102, 0.9)'
+      ctx.lineWidth = 2.5
+      strokeCell(ctx, highlightShape.outline)
+    }
+  }
+
+  if (options?.showPlayer ?? true) {
+    const playerShape = projectedCells[state.playerCellId]?.shape
+    if (playerShape && tileset) {
+      const { minX, minY, maxX, maxY } = outlineBounds(playerShape.outline)
+      const spriteSize = Math.max(36, Math.min(96, Math.min(maxX - minX, maxY - minY) * 0.42))
+      const playerCenterPoint = shapeCenter(playerShape)
+      ctx.imageSmoothingEnabled = false
+      ctx.drawImage(
+        tileset.playerSprites[state.playerFacing],
+        playerCenterPoint.x - spriteSize / 2,
+        playerCenterPoint.y - spriteSize / 2,
+        spriteSize,
+        spriteSize,
+      )
+    } else if (playerShape) {
+      const playerCenterPoint = shapeCenter(playerShape)
+      ctx.fillStyle = '#2a1d00'
+      ctx.beginPath()
+      ctx.arc(playerCenterPoint.x, playerCenterPoint.y, 5, 0, 2 * Math.PI)
+      ctx.fill()
+    }
   }
 
   ctx.restore()

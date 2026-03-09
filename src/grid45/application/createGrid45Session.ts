@@ -1,5 +1,5 @@
 import { createInitialGameState, advanceGame } from '../domain/engine'
-import type { GameState, MoveIntent } from '../domain/model'
+import type { GameState, MazeWorld, MoveIntent } from '../domain/model'
 import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, type WorldSize } from '../domain/world'
 import type { ClockPort, SeedPort } from './ports'
 
@@ -16,6 +16,7 @@ export type Grid45Session = {
 type CreateGrid45SessionOptions = {
   clock: ClockPort
   seedPort: SeedPort
+  initialWorld?: MazeWorld
   initialWorldSize?: WorldSize
   initialAntCount?: number
   initialPinkBallCount?: number
@@ -26,6 +27,7 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
   const {
     clock,
     seedPort,
+    initialWorld,
     initialWorldSize = defaultWorldSize,
     initialAntCount = defaultAntCount,
     initialPinkBallCount = defaultPinkBallCount,
@@ -38,7 +40,7 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
   let teethCount = initialTeethCount
   const createWorld = (seedOverride?: number) =>
     createGrid45World({ seed: seedOverride ?? seedPort.nextSeed(), size: worldSize, antCount, pinkBallCount, teethCount })
-  let currentWorld = createWorld()
+  let currentWorld = initialWorld ? structuredClone(initialWorld) : createWorld()
 
   let state = createInitialGameState(currentWorld)
   let pendingIntent: MoveIntent = 'stay'
