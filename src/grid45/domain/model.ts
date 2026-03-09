@@ -2,13 +2,15 @@ import type { Vec2 } from '../../hyper/vec2'
 
 export type Direction = 'north' | 'east' | 'south' | 'west'
 export type MoveIntent = Direction | 'stay'
-export type CellKind = 'floor' | 'wall'
+export type CellKind = 'floor' | 'wall' | 'toggle-floor' | 'toggle-wall'
 export const keyColors = ['blue', 'red', 'green', 'yellow'] as const
 export type KeyColor = (typeof keyColors)[number]
 export type CellFeature =
   | 'none'
   | 'chip'
+  | 'green-button'
   | 'socket'
+  | 'tank-button'
   | 'exit'
   | 'key-blue'
   | 'key-red'
@@ -22,7 +24,7 @@ export type TickOutcome = 'moved' | 'blocked' | 'resting' | 'locked' | 'complete
 
 export type DirectionMap<T> = Record<Direction, T>
 export type KeyInventory = Record<KeyColor, number>
-export type MonsterKind = 'ant' | 'pink-ball' | 'teeth'
+export type MonsterKind = 'ant' | 'pink-ball' | 'teeth' | 'tank'
 
 export type AreaDagNode = {
   id: number
@@ -97,6 +99,7 @@ export type GameState = {
   openedDoorCellIds: Set<number>
   keyInventory: KeyInventory
   socketCleared: boolean
+  togglePhase: boolean
   playerDead: boolean
   levelComplete: boolean
   world: MazeWorld
@@ -139,4 +142,15 @@ export function doorColorFromFeature(feature: CellFeature): KeyColor | null {
   if (feature === 'door-green') return 'green'
   if (feature === 'door-yellow') return 'yellow'
   return null
+}
+
+export function currentCellKind(kind: CellKind, togglePhase: boolean): CellKind {
+  if (kind === 'toggle-floor') return togglePhase ? 'toggle-wall' : 'toggle-floor'
+  if (kind === 'toggle-wall') return togglePhase ? 'toggle-floor' : 'toggle-wall'
+  return kind
+}
+
+export function isPassableCellKind(kind: CellKind, togglePhase: boolean): boolean {
+  const effectiveKind = currentCellKind(kind, togglePhase)
+  return effectiveKind === 'floor' || effectiveKind === 'toggle-floor'
 }

@@ -27,6 +27,7 @@ const DEFAULT_WORLD_SIZE: WorldSize = 'medium'
 const DEFAULT_ANT_COUNT = 1
 const DEFAULT_PINK_BALL_COUNT = 1
 const DEFAULT_TEETH_COUNT = 0
+const DEFAULT_TANK_COUNT = 0
 const KEY_COLORS: KeyColor[] = ['blue', 'red', 'yellow', 'green']
 
 export const worldSizes = ['tiny', 'small', 'medium', 'large', 'huge'] as const
@@ -88,6 +89,7 @@ export const defaultWorldSize = DEFAULT_WORLD_SIZE
 export const defaultAntCount = DEFAULT_ANT_COUNT
 export const defaultPinkBallCount = DEFAULT_PINK_BALL_COUNT
 export const defaultTeethCount = DEFAULT_TEETH_COUNT
+export const defaultTankCount = DEFAULT_TANK_COUNT
 
 type CreateGrid45WorldOptions = {
   seed: number
@@ -95,6 +97,7 @@ type CreateGrid45WorldOptions = {
   antCount?: number
   pinkBallCount?: number
   teethCount?: number
+  tankCount?: number
   maxCells?: number
   maxCenterRadius?: number
 }
@@ -1171,9 +1174,10 @@ function buildInitialMonsters(
   antCount: number,
   pinkBallCount: number,
   teethCount: number,
+  tankCount: number,
   seed: number,
 ): MazeWorld['initialMonsters'] {
-  if (antCount <= 0 && pinkBallCount <= 0 && teethCount <= 0) return []
+  if (antCount <= 0 && pinkBallCount <= 0 && teethCount <= 0 && tankCount <= 0) return []
 
   const rng = mulberry32(seed)
   const candidateCellIds = cells
@@ -1192,6 +1196,7 @@ function buildInitialMonsters(
   let antPlaced = 0
   let pinkBallPlaced = 0
   let teethPlaced = 0
+  let tankPlaced = 0
   let nextId = 0
 
   for (const cellId of candidateCellIds) {
@@ -1242,6 +1247,21 @@ function buildInitialMonsters(
     occupiedCellIds.add(cellId)
   }
 
+  for (const cellId of candidateCellIds) {
+    if (tankPlaced >= tankCount) break
+    if (occupiedCellIds.has(cellId)) continue
+
+    monsters.push({
+      id: nextId++,
+      kind: 'tank',
+      cellId,
+      facing: directions[Math.floor(rng() * directions.length)],
+      recoveryTicks: 0,
+    })
+    tankPlaced += 1
+    occupiedCellIds.add(cellId)
+  }
+
   return monsters
 }
 
@@ -1251,6 +1271,7 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
   const antCount = Math.max(0, Math.floor(options.antCount ?? DEFAULT_ANT_COUNT))
   const pinkBallCount = Math.max(0, Math.floor(options.pinkBallCount ?? DEFAULT_PINK_BALL_COUNT))
   const teethCount = Math.max(0, Math.floor(options.teethCount ?? DEFAULT_TEETH_COUNT))
+  const tankCount = Math.max(0, Math.floor(options.tankCount ?? DEFAULT_TANK_COUNT))
   const config = worldSizeConfigs[size]
   const maxCells = options.maxCells ?? config.maxCells
   const maxCenterRadius = options.maxCenterRadius ?? config.maxCenterRadius
@@ -1313,7 +1334,7 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
       socketCellId: progression.layout.socketCellId,
       exitCellId: progression.layout.exitCellId,
       areaDag: progression.layout.areaDag,
-      initialMonsters: buildInitialMonsters(cells, startCellId, antCount, pinkBallCount, teethCount, mixSeed(attemptSeed, 811)),
+      initialMonsters: buildInitialMonsters(cells, startCellId, antCount, pinkBallCount, teethCount, tankCount, mixSeed(attemptSeed, 811)),
       cells,
     }
   }

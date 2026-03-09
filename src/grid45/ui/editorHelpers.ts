@@ -1,8 +1,8 @@
 import { hyperbolicDistance } from '../../hyper/poincare'
 import type { Vec2 } from '../../hyper/vec2'
-import type { AreaDag, CellFeature, Direction, MazeWorld, MonsterKind } from '../domain/model'
+import { isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeWorld, type MonsterKind } from '../domain/model'
 
-export type EditorPaintTool = 'floor' | 'wall' | 'start' | CellFeature | MonsterKind
+export type EditorPaintTool = CellKind | 'start' | CellFeature | MonsterKind
 
 const customAreaDag: AreaDag = {
   nodes: [],
@@ -19,7 +19,7 @@ function nextMonsterId(world: MazeWorld): number {
 }
 
 function firstFloorCellId(world: MazeWorld): number {
-  return world.cells.find((cell) => cell.kind === 'floor')?.id ?? 0
+  return world.cells.find((cell) => isPassableCellKind(cell.kind, false))?.id ?? 0
 }
 
 function hasMonsterAtCell(world: MazeWorld, cellId: number): boolean {
@@ -40,7 +40,7 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   const nextWorld = cloneMazeWorld(world)
 
   for (const cell of nextWorld.cells) {
-    if (cell.kind === 'wall') {
+    if (cell.kind === 'wall' || cell.kind === 'toggle-wall') {
       cell.feature = 'none'
     }
   }
@@ -58,7 +58,7 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   nextWorld.initialMonsters = nextWorld.initialMonsters
     .filter((monster) => {
       const cell = nextWorld.cells[monster.cellId]
-      return cell.kind === 'floor' && cell.feature === 'none'
+      return isPassableCellKind(cell.kind, false) && cell.feature === 'none'
     })
     .map((monster, index) => ({
       ...monster,
@@ -66,7 +66,7 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
       recoveryTicks: 0,
     }))
 
-  if (nextWorld.cells[nextWorld.startCellId]?.kind !== 'floor' || hasMonsterAtCell(nextWorld, nextWorld.startCellId)) {
+  if (!isPassableCellKind(nextWorld.cells[nextWorld.startCellId]?.kind ?? 'wall', false) || hasMonsterAtCell(nextWorld, nextWorld.startCellId)) {
     nextWorld.startCellId = firstFloorCellId(nextWorld)
   }
 
@@ -91,19 +91,24 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
     return normalizeEditorWorld(nextWorld)
   }
 
-  if (tool === 'wall') {
-    cell.kind = 'wall'
+  if (tool === 'wall' || tool === 'toggle-wall') {
+    cell.kind = tool
     cell.feature = 'none'
     return normalizeEditorWorld(nextWorld)
   }
 
-  if (tool === 'floor' || tool === 'none') {
-    cell.kind = 'floor'
+  if (tool === 'floor' || tool === 'toggle-floor') {
+    cell.kind = tool
     cell.feature = 'none'
     return normalizeEditorWorld(nextWorld)
   }
 
-  if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth') {
+  if (tool === 'none') {
+    cell.feature = 'none'
+    return normalizeEditorWorld(nextWorld)
+  }
+
+  if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank') {
     cell.kind = 'floor'
     cell.feature = 'none'
     nextWorld.initialMonsters.push({

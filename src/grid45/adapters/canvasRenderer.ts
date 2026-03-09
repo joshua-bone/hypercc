@@ -2,7 +2,7 @@ import { geodesicPolyline } from '../../hyper/geodesic'
 import { dot, norm, type Vec2 } from '../../hyper/vec2'
 import { toCameraView } from '../domain/camera'
 import { directionVectors } from '../domain/directions'
-import { doorColorFromFeature, keyColorFromFeature } from '../domain/model'
+import { currentCellKind, doorColorFromFeature, keyColorFromFeature } from '../domain/model'
 import type { Grid45Tileset } from './spriteAtlas'
 import type { Direction, GameState, MazeCell, MonsterState } from '../domain/model'
 
@@ -252,6 +252,7 @@ function monsterSpriteRotation(
 function monsterBaseSprite(monster: MonsterState, tileset: Grid45Tileset): CanvasImageSource {
   if (monster.kind === 'pink-ball') return tileset.pinkBallSprite
   if (monster.kind === 'teeth') return tileset.teethSprites[monster.facing]
+  if (monster.kind === 'tank') return tileset.tankSprites[monster.facing]
   return tileset.antSprites[monster.facing]
 }
 
@@ -271,7 +272,7 @@ function fillCell(
 }
 
 function baseFillForCell(kind: MazeCell['kind']): string {
-  return kind === 'floor' ? '#bebebe' : '#9c9c9c'
+  return kind === 'floor' || kind === 'toggle-floor' ? '#bebebe' : '#9c9c9c'
 }
 
 function featureIsVisible(
@@ -292,7 +293,9 @@ function featureFillForCell(
 ): string | null {
   if (!featureIsVisible(cell, state)) return null
   if (cell.feature === 'chip') return '#e0c15b'
+  if (cell.feature === 'green-button') return '#7ad065'
   if (cell.feature === 'socket') return '#5ea0c6'
+  if (cell.feature === 'tank-button') return '#b58f5f'
   if (cell.feature === 'exit') return '#6cb774'
 
   const keyColor = keyColorFromFeature(cell.feature)
@@ -550,8 +553,9 @@ export function renderGrid45Scene(
   ctx.fillRect(centerX - diskRadius, centerY - diskRadius, diskRadius * 2, diskRadius * 2)
 
   for (const projected of projectedCells) {
-    fillCell(ctx, projected.shape.outline, tileset ? baseFillForCell(projected.cell.kind) : projected.cell.kind === 'floor' ? '#d3d7de' : '#363d46')
-    if (tileset) drawCellSprite(ctx, projected.shape, tileset.tiles[projected.cell.kind])
+    const effectiveKind = currentCellKind(projected.cell.kind, state.togglePhase)
+    fillCell(ctx, projected.shape.outline, tileset ? baseFillForCell(effectiveKind) : effectiveKind === 'floor' || effectiveKind === 'toggle-floor' ? '#d3d7de' : '#363d46')
+    if (tileset) drawCellSprite(ctx, projected.shape, tileset.tiles[effectiveKind])
     const featureSprite = tileset ? featureSpriteForCell(projected.cell, state, tileset) : null
     if (featureSprite) drawCellSprite(ctx, projected.shape, featureSprite)
     if (!tileset) {

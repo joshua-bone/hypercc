@@ -7,7 +7,7 @@ import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { createInitialGameState } from '../domain/engine'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
-import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
+import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTankCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
 import { clearEditorWorld, createBlankFloorEditorWorld, cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, rotateEditorMobAtCell, type EditorPaintTool } from './editorHelpers'
 import type { Vec2 } from '../../hyper/vec2'
 
@@ -46,9 +46,13 @@ const worldSizeLabels: Record<WorldSize, string> = {
 const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'floor', label: 'Floor' },
   { tool: 'wall', label: 'Wall' },
+  { tool: 'toggle-floor', label: 'Toggle Floor' },
+  { tool: 'toggle-wall', label: 'Toggle Wall' },
   { tool: 'start', label: 'Start' },
   { tool: 'chip', label: 'Chip' },
+  { tool: 'green-button', label: 'Green Button' },
   { tool: 'socket', label: 'Socket' },
+  { tool: 'tank-button', label: 'Tank Button' },
   { tool: 'exit', label: 'Exit' },
   { tool: 'key-blue', label: 'Blue Key' },
   { tool: 'key-red', label: 'Red Key' },
@@ -61,6 +65,7 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'ant', label: 'Ant' },
   { tool: 'pink-ball', label: 'Pink Ball' },
   { tool: 'teeth', label: 'Teeth' },
+  { tool: 'tank', label: 'Tank' },
   { tool: 'none', label: 'Clear Feature' },
 ]
 
@@ -88,8 +93,8 @@ type PaintDragState = {
 
 type PaletteIconMap = Partial<Record<EditorPaintTool, string>>
 
-function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' {
-  return tool === 'ant' || tool === 'pink-ball' || tool === 'teeth'
+function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' {
+  return tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank'
 }
 
 function makePaletteIcon(sprite?: HTMLCanvasElement | null): string | undefined {
@@ -120,9 +125,13 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
   return {
     floor: makePaletteIcon(tileset.tiles.floor),
     wall: makePaletteIcon(tileset.tiles.wall),
+    'toggle-floor': makePaletteIcon(tileset.tiles['toggle-floor']),
+    'toggle-wall': makePaletteIcon(tileset.tiles['toggle-wall']),
     start: makePaletteIcon(tileset.playerSprites.north),
     chip: makePaletteIcon(tileset.features.chip),
+    'green-button': makePaletteIcon(tileset.features['green-button']),
     socket: makePaletteIcon(tileset.features.socket),
+    'tank-button': makePaletteIcon(tileset.features['tank-button']),
     exit: makePaletteIcon(tileset.features.exit),
     'key-blue': makePaletteIcon(tileset.features['key-blue']),
     'key-red': makePaletteIcon(tileset.features['key-red']),
@@ -135,6 +144,7 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
     ant: makePaletteIcon(tileset.antSprites[mobFacing]),
     'pink-ball': makePaletteIcon(tileset.pinkBallSprite),
     teeth: makePaletteIcon(tileset.teethSprites[mobFacing]),
+    tank: makePaletteIcon(tileset.tankSprites[mobFacing]),
     none: createClearIcon(),
   }
 }
@@ -148,6 +158,7 @@ function iconForPaintTool(
   if (!tileset) return paletteIcons[tool]
   if (tool === 'ant') return makePaletteIcon(tileset.antSprites[facing])
   if (tool === 'teeth') return makePaletteIcon(tileset.teethSprites[facing])
+  if (tool === 'tank') return makePaletteIcon(tileset.tankSprites[facing])
   if (tool === 'pink-ball') return makePaletteIcon(tileset.pinkBallSprite)
   return paletteIcons[tool]
 }
@@ -176,6 +187,7 @@ function createSession(): Grid45Session {
     initialAntCount: defaultAntCount,
     initialPinkBallCount: defaultPinkBallCount,
     initialTeethCount: defaultTeethCount,
+    initialTankCount: defaultTankCount,
   })
 }
 
@@ -345,6 +357,7 @@ export default function Grid45App() {
   const [antCount, setAntCount] = useState<number>(defaultAntCount)
   const [pinkBallCount, setPinkBallCount] = useState<number>(defaultPinkBallCount)
   const [teethCount, setTeethCount] = useState<number>(defaultTeethCount)
+  const [tankCount, setTankCount] = useState<number>(defaultTankCount)
   const [seedInput, setSeedInput] = useState('')
   const [editorBlankSize, setEditorBlankSize] = useState<WorldSize>(defaultWorldSize)
   const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => cloneMazeWorld(playSession.getSnapshot().world))
@@ -369,6 +382,7 @@ export default function Grid45App() {
   const antTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'ant').length
   const pinkBallTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
   const teethTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'teeth').length
+  const tankTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'tank').length
   const editorMonsterTotal = editorWorld.initialMonsters.length
   const editorTotalCells = editorWorld.cells.length
 
@@ -719,7 +733,7 @@ export default function Grid45App() {
   }, [activeTab, playtestSession, editorIntent, editorRotateIntent, editorWorld])
 
   const generateNewMap = () => {
-    playSession.reset(worldSize, antCount, pinkBallCount, teethCount, parseSeedInput(seedInput))
+    playSession.reset(worldSize, antCount, pinkBallCount, teethCount, tankCount, parseSeedInput(seedInput))
     setSeedInput('')
   }
 
@@ -752,6 +766,7 @@ export default function Grid45App() {
       antCount: 0,
       pinkBallCount: 0,
       teethCount: 0,
+      tankCount: 0,
     })
     const clearedWorld = createBlankFloorEditorWorld(sourceWorld, sourceWorld.startCellId)
     const clearedCenter = clearedWorld.cells[clearedWorld.startCellId].center
@@ -973,6 +988,7 @@ export default function Grid45App() {
           <div className="grid45Metrics">Ants: {antTotal}</div>
           <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
           <div className="grid45Metrics">Teeth: {teethTotal}</div>
+          <div className="grid45Metrics">Tanks: {tankTotal}</div>
           <div className="grid45Metrics">Seed: {playSnapshot.world.seed}</div>
           <div className="grid45Metrics">Exit: {playSnapshot.levelComplete ? 'reached' : 'active'}</div>
           <div className="grid45Metrics">Move lock: {playSnapshot.recoveryTicks > 0 ? 'armed for next tick' : 'ready'}</div>
@@ -1077,6 +1093,27 @@ export default function Grid45App() {
                 </button>
               </div>
               <span className="grid45AntValue">{teethCount}</span>
+            </label>
+            <label className="grid45SelectLabel grid45AntControl">
+              <span>Tanks</span>
+              <div className="grid45AntRow">
+                <button className="grid45Button grid45StepButton" type="button" onClick={() => setTankCount((count) => Math.max(MIN_MONSTER_COUNT, count - 1))}>
+                  -
+                </button>
+                <input
+                  className="grid45Slider"
+                  type="range"
+                  min={MIN_MONSTER_COUNT}
+                  max={MAX_MONSTER_COUNT}
+                  step={1}
+                  value={tankCount}
+                  onChange={(event) => setTankCount(Number(event.target.value))}
+                />
+                <button className="grid45Button grid45StepButton" type="button" onClick={() => setTankCount((count) => Math.min(MAX_MONSTER_COUNT, count + 1))}>
+                  +
+                </button>
+              </div>
+              <span className="grid45AntValue">{tankCount}</span>
             </label>
             <button className="grid45Button" onClick={generateNewMap}>
               Generate Maze

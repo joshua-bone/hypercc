@@ -4,6 +4,7 @@ import { directions, resolveCameraRelativeExits } from './directions'
 import {
   createEmptyKeyInventory,
   doorColorFromFeature,
+  isPassableCellKind,
   keyColorFromFeature,
   type Direction,
   type DirectionMap,
@@ -30,12 +31,13 @@ const oppositeDirection: DirectionMap<Direction> = {
 
 type MonsterTraversalState = Pick<
   GameState,
-  'world' | 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'
+  'world' | 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared' | 'togglePhase'
 >
 
 type MonsterAdvanceResult = {
   monsters: MonsterState[]
   playerDead: boolean
+  togglePhase: boolean
 }
 
 type MonsterMovePlan = {
@@ -60,6 +62,7 @@ export function createInitialGameState(world: MazeWorld): GameState {
     openedDoorCellIds: new Set<number>(),
     keyInventory: createEmptyKeyInventory(),
     socketCleared: false,
+    togglePhase: false,
     playerDead: false,
     levelComplete: false,
     world,
@@ -68,7 +71,7 @@ export function createInitialGameState(world: MazeWorld): GameState {
 
 function canEnterCell(state: GameState, targetId: number): boolean {
   const cell = state.world.cells[targetId]
-  if (cell.kind !== 'floor') return false
+  if (!isPassableCellKind(cell.kind, state.togglePhase)) return false
   const doorColor = doorColorFromFeature(cell.feature)
   if (doorColor !== null && !state.openedDoorCellIds.has(targetId) && state.keyInventory[doorColor] < 1) return false
   if (cell.feature === 'socket' && !state.socketCleared && state.remainingChipCellIds.size > 0) return false
@@ -85,7 +88,7 @@ function monsterCanEnterCell(
   if (occupiedCellIds.has(targetId)) return false
 
   const cell = state.world.cells[targetId]
-  if (cell.kind !== 'floor') return false
+  if (!isPassableCellKind(cell.kind, state.togglePhase)) return false
 
   const doorColor = doorColorFromFeature(cell.feature)
   if (doorColor !== null) return state.openedDoorCellIds.has(targetId)
@@ -95,12 +98,28 @@ function monsterCanEnterCell(
   const keyColor = keyColorFromFeature(cell.feature)
   if (keyColor !== null) return state.collectedKeyCellIds.has(targetId)
 
-  return cell.feature === 'none'
+  return cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button'
 }
 
 function nextFacingFromMove(world: MazeWorld, previousCellId: number, nextCellId: number, fallback: Direction): Direction {
   const backwardDirection = directions.find((direction) => world.cells[nextCellId].exits[direction] === previousCellId)
   return backwardDirection ? oppositeDirection[backwardDirection] : fallback
+}
+
+function reverseDirection(direction: Direction): Direction {
+  return oppositeDirection[direction]
+}
+
+function reverseTankFacing(monster: MonsterState): MonsterState {
+  if (monster.kind !== 'tank') return monster
+  return {
+    ...monster,
+    facing: reverseDirection(monster.facing),
+  }
+}
+
+function reverseTankMonsters(monsters: MonsterState[]): MonsterState[] {
+  return monsters.map(reverseTankFacing)
 }
 
 function chasePlanForTeeth(
@@ -165,6 +184,13 @@ function movePlanForMonster(
     return chasePlanForTeeth(state.world, monster.cellId, playerCellId, monster.facing)
   }
 
+  if (monster.kind === 'tank') {
+    return {
+      facing: monster.facing,
+      directions: [monster.facing],
+    }
+  }
+
   return {
     facing: monster.facing,
     directions: antTurnPriority[monster.facing],
@@ -182,9 +208,12 @@ function advanceMonsters(
 ): MonsterAdvanceResult {
   const nextMonsters: MonsterState[] = []
   const occupiedCellIds = new Set(monsters.map((monster) => monster.cellId))
+  let togglePhase = state.togglePhase
+  let tankDirectionsReversed = false
 
   for (let monsterIndex = 0; monsterIndex < monsters.length; monsterIndex += 1) {
-    const monster = monsters[monsterIndex]
+    const storedMonster = monsters[monsterIndex]
+    const monster = tankDirectionsReversed && storedMonster.kind === 'tank' ? reverseTankFacing(storedMonster) : storedMonster
     occupiedCellIds.delete(monster.cellId)
 
     if (monster.recoveryTicks > 0) {
@@ -196,7 +225,14 @@ function advanceMonsters(
       continue
     }
 
-    const movePlan = movePlanForMonster(state, monster, playerCellId)
+    const movePlan = movePlanForMonster(
+      {
+        ...state,
+        togglePhase,
+      },
+      monster,
+      playerCellId,
+    )
     const activeMonster = movePlan.facing === monster.facing ? monster : { ...monster, facing: movePlan.facing }
     const cell = state.world.cells[activeMonster.cellId]
     let moved = false
@@ -208,15 +244,35 @@ function advanceMonsters(
       const nextMonster = {
         ...activeMonster,
         cellId: targetId,
-        facing: nextFacingFromMove(state.world, monster.cellId, targetId, direction),
+        facing:
+          activeMonster.kind === 'tank'
+            ? activeMonster.facing
+            : nextFacingFromMove(state.world, monster.cellId, targetId, direction),
         recoveryTicks: cooldownTicksForMonster(activeMonster.kind),
       }
       nextMonsters.push(nextMonster)
 
       if (targetId === playerCellId) {
         return {
-          monsters: [...nextMonsters, ...monsters.slice(monsterIndex + 1).map((remainingMonster) => ({ ...remainingMonster }))],
+          monsters: [
+            ...nextMonsters,
+            ...monsters.slice(monsterIndex + 1).map((remainingMonster) =>
+              tankDirectionsReversed && remainingMonster.kind === 'tank' ? reverseTankFacing(remainingMonster) : { ...remainingMonster },
+            ),
+          ],
           playerDead: true,
+          togglePhase,
+        }
+      }
+
+      const enteredCell = state.world.cells[targetId]
+      if (enteredCell.feature === 'green-button') {
+        togglePhase = !togglePhase
+      }
+      if (enteredCell.feature === 'tank-button') {
+        tankDirectionsReversed = !tankDirectionsReversed
+        for (let index = 0; index < nextMonsters.length; index += 1) {
+          nextMonsters[index] = reverseTankFacing(nextMonsters[index])
         }
       }
 
@@ -234,6 +290,7 @@ function advanceMonsters(
   return {
     monsters: nextMonsters,
     playerDead: false,
+    togglePhase,
   }
 }
 
@@ -249,6 +306,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   let openedDoorCellIds = state.openedDoorCellIds
   let keyInventory = state.keyInventory
   let socketCleared = state.socketCleared
+  let togglePhase = state.togglePhase
   let playerDead = state.playerDead
   let levelComplete = state.levelComplete
 
@@ -315,6 +373,12 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         if (targetCell.feature === 'socket') {
           socketCleared = true
         }
+        if (targetCell.feature === 'green-button') {
+          togglePhase = !togglePhase
+        }
+        if (targetCell.feature === 'tank-button') {
+          monsters = reverseTankMonsters(monsters)
+        }
         levelComplete = targetId === state.world.exitCellId
         recoveryTicks = levelComplete ? 0 : 1
         lastOutcome = levelComplete ? 'completed' : 'moved'
@@ -333,11 +397,13 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         collectedKeyCellIds,
         openedDoorCellIds,
         socketCleared,
+        togglePhase,
       },
       monsters,
       playerCellId,
     )
     monsters = monsterAdvance.monsters
+    togglePhase = monsterAdvance.togglePhase
     if (monsterAdvance.playerDead) {
       playerDead = true
       recoveryTicks = 0
@@ -360,6 +426,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
     openedDoorCellIds,
     keyInventory,
     socketCleared,
+    togglePhase,
     playerDead,
     levelComplete,
   }

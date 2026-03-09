@@ -17,6 +17,7 @@ export type Grid45Tileset = {
   playerSprites: Record<Direction, HTMLCanvasElement>
   antSprites: Record<Direction, HTMLCanvasElement>
   teethSprites: Record<Direction, HTMLCanvasElement>
+  tankSprites: Record<Direction, HTMLCanvasElement>
   pinkBallSprite: HTMLCanvasElement
 }
 
@@ -53,6 +54,13 @@ const teethTileRows: Record<Direction, number> = {
   west: 6,
   south: 7,
   east: 8,
+}
+
+const tankTileRows: Record<Direction, number> = {
+  north: 13,
+  west: 14,
+  south: 15,
+  east: 16,
 }
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -112,10 +120,14 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
     tiles: {
       floor: drawTile(image, { col: 1, row: 1 }),
       wall: drawTile(image, { col: 1, row: 2 }),
+      'toggle-floor': drawTile(image, { col: 3, row: 7 }),
+      'toggle-wall': drawTile(image, { col: 3, row: 6 }),
     },
     features: {
       chip: drawTile(image, { col: 1, row: 3 }),
+      'green-button': drawTile(image, { col: 3, row: 4 }),
       socket: drawTile(image, { col: 3, row: 3 }),
+      'tank-button': drawTile(image, { col: 3, row: 9 }),
       exit: drawTile(image, { col: 2, row: 6 }),
       'key-blue': drawTile(image, { col: 7, row: keyTileRows.blue }),
       'key-red': drawTile(image, { col: 7, row: keyTileRows.red }),
@@ -155,6 +167,12 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       east: applyMask(drawTile(image, { col: 9, row: teethTileRows.east }), drawTile(image, { col: 12, row: teethTileRows.east })),
       south: applyMask(drawTile(image, { col: 9, row: teethTileRows.south }), drawTile(image, { col: 12, row: teethTileRows.south })),
       west: applyMask(drawTile(image, { col: 9, row: teethTileRows.west }), drawTile(image, { col: 12, row: teethTileRows.west })),
+    },
+    tankSprites: {
+      north: drawTile(image, { col: 5, row: tankTileRows.north }),
+      east: drawTile(image, { col: 5, row: tankTileRows.east }),
+      south: drawTile(image, { col: 5, row: tankTileRows.south }),
+      west: drawTile(image, { col: 5, row: tankTileRows.west }),
     },
     pinkBallSprite: applyMask(drawTile(image, { col: 8, row: 9 }), drawTile(image, { col: 11, row: 9 })),
   }
