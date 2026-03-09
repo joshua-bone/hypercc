@@ -144,6 +144,21 @@ export function clearEditorWorld(world: MazeWorld, startCellId = world.startCell
   return normalizeEditorWorld(nextWorld)
 }
 
+export function createBlankFloorEditorWorld(world: MazeWorld, startCellId = world.startCellId): MazeWorld {
+  const nextWorld = cloneMazeWorld(world)
+  const safeStartCellId = nextWorld.cells[startCellId] ? startCellId : nextWorld.startCellId
+
+  for (const cell of nextWorld.cells) {
+    cell.kind = 'floor'
+    cell.feature = 'none'
+  }
+
+  nextWorld.startCellId = safeStartCellId
+  nextWorld.initialMonsters = []
+
+  return normalizeEditorWorld(nextWorld)
+}
+
 export function downloadWorldJson(world: MazeWorld): void {
   const blob = new Blob([JSON.stringify(world, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)

@@ -8,7 +8,7 @@ import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { createInitialGameState } from '../domain/engine'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
 import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
-import { clearEditorWorld, cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
+import { clearEditorWorld, createBlankFloorEditorWorld, cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
 import type { Vec2 } from '../../hyper/vec2'
 
 const MIN_MONSTER_COUNT = 0
@@ -640,7 +640,7 @@ export default function Grid45App() {
       pinkBallCount: 0,
       teethCount: 0,
     })
-    const clearedWorld = clearEditorWorld(sourceWorld, sourceWorld.startCellId)
+    const clearedWorld = createBlankFloorEditorWorld(sourceWorld, sourceWorld.startCellId)
     const clearedCenter = clearedWorld.cells[clearedWorld.startCellId].center
     editorCameraCenterRef.current = clearedCenter
     editorCameraAngleRef.current = 0
