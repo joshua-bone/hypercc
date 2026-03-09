@@ -9,6 +9,8 @@ export type CellFeature =
   | 'none'
   | 'bomb'
   | 'chip'
+  | 'flippers'
+  | 'fire-boots'
   | 'green-button'
   | 'socket'
   | 'tank-button'
@@ -97,10 +99,13 @@ export type GameState = {
   monsters: MonsterState[]
   remainingChipCellIds: Set<number>
   collectedKeyCellIds: Set<number>
+  collectedPickupCellIds: Set<number>
   openedDoorCellIds: Set<number>
   removedBombCellIds: Set<number>
   terrainOverrides: Map<number, CellKind>
   keyInventory: KeyInventory
+  hasFlippers: boolean
+  hasFireBoots: boolean
   socketCleared: boolean
   togglePhase: boolean
   playerDead: boolean

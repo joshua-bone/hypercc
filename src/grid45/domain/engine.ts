@@ -47,7 +47,15 @@ const oppositeDirection: DirectionMap<Direction> = {
 
 type MonsterTraversalState = Pick<
   GameState,
-  'world' | 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'terrainOverrides' | 'socketCleared' | 'togglePhase'
+  | 'world'
+  | 'remainingChipCellIds'
+  | 'collectedKeyCellIds'
+  | 'collectedPickupCellIds'
+  | 'openedDoorCellIds'
+  | 'removedBombCellIds'
+  | 'terrainOverrides'
+  | 'socketCleared'
+  | 'togglePhase'
 >
 
 type MonsterAdvanceResult = {
@@ -76,10 +84,13 @@ export function createInitialGameState(world: MazeWorld): GameState {
     monsters: world.initialMonsters.map((monster) => ({ ...monster })),
     remainingChipCellIds: new Set(world.chipCellIds),
     collectedKeyCellIds: new Set<number>(),
+    collectedPickupCellIds: new Set<number>(),
     openedDoorCellIds: new Set<number>(),
     removedBombCellIds: new Set<number>(),
     terrainOverrides: new Map<number, CellKind>(),
     keyInventory: createEmptyKeyInventory(),
+    hasFlippers: false,
+    hasFireBoots: false,
     socketCleared: false,
     togglePhase: false,
     playerDead: false,
@@ -132,6 +143,10 @@ function canEnterCell(state: GameState, targetId: number): boolean {
   return true
 }
 
+function pickupCollected(state: Pick<GameState, 'collectedPickupCellIds'> | Pick<MonsterTraversalState, 'collectedPickupCellIds'>, cellId: number): boolean {
+  return state.collectedPickupCellIds.has(cellId)
+}
+
 function monsterCanEnterCell(
   state: MonsterTraversalState,
   monsterKind: MonsterKind,
@@ -152,6 +167,7 @@ function monsterCanEnterCell(
 
   const keyColor = keyColorFromFeature(cell.feature)
   if (keyColor !== null) return state.collectedKeyCellIds.has(targetId)
+  if ((cell.feature === 'flippers' || cell.feature === 'fire-boots') && !pickupCollected(state, targetId)) return false
 
   return cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || isBombActive(state, targetId)
 }
@@ -170,6 +186,7 @@ function dirtBlockCanEnterCell(
 
   const keyColor = keyColorFromFeature(cell.feature)
   if (keyColor === 'blue' || keyColor === 'red') return true
+  if ((cell.feature === 'flippers' || cell.feature === 'fire-boots') && !pickupCollected(state, targetId)) return false
 
   return false
 }
@@ -437,10 +454,13 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   let monsters = state.monsters
   let remainingChipCellIds = state.remainingChipCellIds
   let collectedKeyCellIds = state.collectedKeyCellIds
+  let collectedPickupCellIds = state.collectedPickupCellIds
   let openedDoorCellIds = state.openedDoorCellIds
   let removedBombCellIds = state.removedBombCellIds
   let terrainOverrides = state.terrainOverrides
   let keyInventory = state.keyInventory
+  let hasFlippers = state.hasFlippers
+  let hasFireBoots = state.hasFireBoots
   let socketCleared = state.socketCleared
   let togglePhase = state.togglePhase
   let playerDead = state.playerDead
@@ -530,6 +550,12 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
               [keyColor]: keyInventory[keyColor] + 1,
             }
           }
+          if ((targetCell.feature === 'flippers' || targetCell.feature === 'fire-boots') && !state.collectedPickupCellIds.has(targetId)) {
+            collectedPickupCellIds = new Set(state.collectedPickupCellIds)
+            collectedPickupCellIds.add(targetId)
+            if (targetCell.feature === 'flippers') hasFlippers = true
+            if (targetCell.feature === 'fire-boots') hasFireBoots = true
+          }
 
           if (targetCell.feature === 'socket') {
             socketCleared = true
@@ -543,7 +569,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           if (enteredTerrain === 'dirt') {
             terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
           }
-          if (enteredTerrain === 'water' || enteredTerrain === 'fire') {
+          if ((enteredTerrain === 'water' && !hasFlippers) || (enteredTerrain === 'fire' && !hasFireBoots)) {
             playerDead = true
             recoveryTicks = 0
             lastOutcome = 'dead'
@@ -595,6 +621,12 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
             [keyColor]: keyInventory[keyColor] + 1,
           }
         }
+        if ((targetCell.feature === 'flippers' || targetCell.feature === 'fire-boots') && !state.collectedPickupCellIds.has(targetId)) {
+          collectedPickupCellIds = new Set(state.collectedPickupCellIds)
+          collectedPickupCellIds.add(targetId)
+          if (targetCell.feature === 'flippers') hasFlippers = true
+          if (targetCell.feature === 'fire-boots') hasFireBoots = true
+        }
 
         if (targetCell.feature === 'socket') {
           socketCleared = true
@@ -608,7 +640,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         if (enteredTerrain === 'dirt') {
           terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
         }
-        if (enteredTerrain === 'water' || enteredTerrain === 'fire') {
+        if ((enteredTerrain === 'water' && !hasFlippers) || (enteredTerrain === 'fire' && !hasFireBoots)) {
           playerDead = true
           recoveryTicks = 0
           lastOutcome = 'dead'
@@ -636,6 +668,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         world: state.world,
         remainingChipCellIds,
         collectedKeyCellIds,
+        collectedPickupCellIds,
         openedDoorCellIds,
         removedBombCellIds,
         terrainOverrides,
@@ -667,10 +700,13 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
     monsters,
     remainingChipCellIds,
     collectedKeyCellIds,
+    collectedPickupCellIds,
     openedDoorCellIds,
     removedBombCellIds,
     terrainOverrides,
     keyInventory,
+    hasFlippers,
+    hasFireBoots,
     socketCleared,
     togglePhase,
     playerDead,

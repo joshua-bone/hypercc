@@ -56,6 +56,8 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'start', label: 'Start' },
   { tool: 'bomb', label: 'Bomb' },
   { tool: 'chip', label: 'Chip' },
+  { tool: 'flippers', label: 'Flippers' },
+  { tool: 'fire-boots', label: 'Fire Boots' },
   { tool: 'green-button', label: 'Green Button' },
   { tool: 'socket', label: 'Socket' },
   { tool: 'tank-button', label: 'Tank Button' },
@@ -140,9 +142,11 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
     gravel: makePaletteIcon(tileset.tiles.gravel),
     'toggle-floor': makePaletteIcon(tileset.tiles['toggle-floor']),
     'toggle-wall': makePaletteIcon(tileset.tiles['toggle-wall']),
-    start: makePaletteIcon(tileset.playerSprites.north),
+    start: makePaletteIcon(tileset.playerSprites.south),
     bomb: makePaletteIcon(tileset.features.bomb),
     chip: makePaletteIcon(tileset.features.chip),
+    flippers: makePaletteIcon(tileset.features.flippers),
+    'fire-boots': makePaletteIcon(tileset.features['fire-boots']),
     'green-button': makePaletteIcon(tileset.features['green-button']),
     socket: makePaletteIcon(tileset.features.socket),
     'tank-button': makePaletteIcon(tileset.features['tank-button']),
@@ -248,6 +252,13 @@ function describeOutcome(snapshot: GameState): string {
 
 function formatKeyInventory(snapshot: GameState): string {
   return keyColors.map((color) => `${keyLabels[color]} ${snapshot.keyInventory[color]}`).join('  ')
+}
+
+function formatGearInventory(snapshot: GameState): string {
+  const gear: string[] = []
+  if (snapshot.hasFlippers) gear.push('Flippers')
+  if (snapshot.hasFireBoots) gear.push('Fire Boots')
+  return gear.length > 0 ? gear.join(', ') : 'None'
 }
 
 function describeGate(edge: GameState['world']['areaDag']['edges'][number]): string {
@@ -1135,6 +1146,7 @@ export default function Grid45App() {
           <div className="grid45Metrics">State: {describeOutcome(playSnapshot)}</div>
           <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
           <div className="grid45Metrics">Keys: {formatKeyInventory(playSnapshot)}</div>
+          <div className="grid45Metrics">Gear: {formatGearInventory(playSnapshot)}</div>
           <div className="grid45Metrics">Ants: {antTotal}</div>
           <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
           <div className="grid45Metrics">Teeth: {teethTotal}</div>
@@ -1288,6 +1300,7 @@ export default function Grid45App() {
               <div className="grid45Metrics">State: {describeOutcome(playtestSnapshot)}</div>
               <div className="grid45Metrics">Chips: {playtestSnapshot.world.chipCellIds.length - playtestSnapshot.remainingChipCellIds.size} / {playtestSnapshot.world.chipCellIds.length}</div>
               <div className="grid45Metrics">Keys: {formatKeyInventory(playtestSnapshot)}</div>
+              <div className="grid45Metrics">Gear: {formatGearInventory(playtestSnapshot)}</div>
               <label className="grid45Toggle">
                 <input
                   type="checkbox"

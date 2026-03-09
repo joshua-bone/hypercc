@@ -351,11 +351,12 @@ function baseFillForCell(kind: MazeCell['kind']): string {
 
 function featureIsVisible(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'collectedPickupCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
 ): boolean {
   if (cell.feature === 'none') return false
   if (cell.feature === 'bomb') return !state.removedBombCellIds.has(cell.id)
   if (cell.feature === 'chip') return state.remainingChipCellIds.has(cell.id)
+  if (cell.feature === 'flippers' || cell.feature === 'fire-boots') return !state.collectedPickupCellIds.has(cell.id)
   if (cell.feature === 'socket') return !state.socketCleared
   if (keyColorFromFeature(cell.feature) !== null) return !state.collectedKeyCellIds.has(cell.id)
   if (doorColorFromFeature(cell.feature) !== null) return !state.openedDoorCellIds.has(cell.id)
@@ -364,11 +365,13 @@ function featureIsVisible(
 
 function featureFillForCell(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'collectedPickupCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
 ): string | null {
   if (!featureIsVisible(cell, state)) return null
   if (cell.feature === 'bomb') return '#a85d5d'
   if (cell.feature === 'chip') return '#e0c15b'
+  if (cell.feature === 'flippers') return '#63d4ea'
+  if (cell.feature === 'fire-boots') return '#f0a15c'
   if (cell.feature === 'green-button') return '#7ad065'
   if (cell.feature === 'socket') return '#5ea0c6'
   if (cell.feature === 'tank-button') return '#b58f5f'
@@ -391,12 +394,20 @@ function featureFillForCell(
 
 function featureSpriteForCell(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'collectedPickupCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
   tileset: Grid45Tileset,
 ): CanvasImageSource | null {
   if (!featureIsVisible(cell, state)) return null
   if (cell.feature === 'none') return null
   return tileset.features[cell.feature]
+}
+
+function playerSpriteForState(state: GameState, tileset: Grid45Tileset): CanvasImageSource {
+  const playerTerrain = currentCellKind(state.world.cells[state.playerCellId].kind, state.togglePhase, state.terrainOverrides.get(state.playerCellId))
+  if (playerTerrain === 'water' && state.hasFlippers) {
+    return tileset.swimmingPlayerSprites[state.playerFacing]
+  }
+  return tileset.playerSprites[state.playerFacing]
 }
 
 function drawCellSprite(
@@ -725,7 +736,7 @@ export function renderGrid45Scene(
       const playerCenterPoint = shapeCenter(playerShape)
       ctx.imageSmoothingEnabled = false
       ctx.drawImage(
-        tileset.playerSprites[state.playerFacing],
+        playerSpriteForState(state, tileset),
         playerCenterPoint.x - spriteSize / 2,
         playerCenterPoint.y - spriteSize / 2,
         spriteSize,

@@ -15,6 +15,7 @@ export type Grid45Tileset = {
   keys: Record<KeyColor, HTMLCanvasElement>
   doors: Record<KeyColor, HTMLCanvasElement>
   playerSprites: Record<Direction, HTMLCanvasElement>
+  swimmingPlayerSprites: Record<Direction, HTMLCanvasElement>
   antSprites: Record<Direction, HTMLCanvasElement>
   gliderSprites: Record<Direction, HTMLCanvasElement>
   teethSprites: Record<Direction, HTMLCanvasElement>
@@ -140,6 +141,8 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
     features: {
       bomb: drawTile(image, { col: 3, row: 11 }),
       chip: drawTile(image, { col: 1, row: 3 }),
+      flippers: drawTile(image, { col: 7, row: 9 }),
+      'fire-boots': drawTile(image, { col: 7, row: 10 }),
       'green-button': drawTile(image, { col: 3, row: 4 }),
       socket: drawTile(image, { col: 3, row: 3 }),
       'tank-button': drawTile(image, { col: 3, row: 9 }),
@@ -170,6 +173,12 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       east: applyMask(drawTile(image, { col: 10, row: playerTileRows.east }), drawTile(image, { col: 13, row: playerTileRows.east })),
       south: applyMask(drawTile(image, { col: 10, row: playerTileRows.south }), drawTile(image, { col: 13, row: playerTileRows.south })),
       west: applyMask(drawTile(image, { col: 10, row: playerTileRows.west }), drawTile(image, { col: 13, row: playerTileRows.west })),
+    },
+    swimmingPlayerSprites: {
+      north: applyMask(drawTile(image, { col: 4, row: playerTileRows.north }), drawTile(image, { col: 13, row: playerTileRows.north })),
+      east: applyMask(drawTile(image, { col: 4, row: playerTileRows.east }), drawTile(image, { col: 13, row: playerTileRows.east })),
+      south: applyMask(drawTile(image, { col: 4, row: playerTileRows.south }), drawTile(image, { col: 13, row: playerTileRows.south })),
+      west: applyMask(drawTile(image, { col: 4, row: playerTileRows.west }), drawTile(image, { col: 13, row: playerTileRows.west })),
     },
     antSprites: {
       north: applyMask(drawTile(image, { col: 8, row: antTileRows.north }), drawTile(image, { col: 11, row: antTileRows.north })),
