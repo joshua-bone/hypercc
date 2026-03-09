@@ -213,20 +213,24 @@ body {
 
 .grid45OrbitGroup {
   position: absolute;
-  display: grid;
+  display: flex;
   gap: 10px;
 }
 
 .grid45OrbitGroupSingle {
-  grid-template-columns: 1fr;
+  transform: translate(-50%, -100%);
 }
 
-.grid45OrbitGroupPair {
-  grid-template-columns: repeat(2, 1fr);
+.grid45OrbitGroupRow {
+  transform: translate(-50%, -50%);
 }
 
-.grid45OrbitGroupQuad {
-  grid-template-columns: repeat(2, 1fr);
+.grid45OrbitGroupTopLeft {
+  justify-content: flex-start;
+}
+
+.grid45OrbitGroupTopRight {
+  justify-content: flex-end;
 }
 
 .grid45InventoryItem {

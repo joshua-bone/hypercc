@@ -113,10 +113,9 @@ type InventoryItem = {
 
 type InventoryOrbitGroup = {
   id: string
-  angleFromTopDeg: number
-  distanceFactor: number
+  anchor: 'top' | 'top-left' | 'top-right'
   items: InventoryItem[]
-  layout: 'single' | 'pair' | 'quad'
+  layout: 'single' | 'row'
 }
 
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'glider' | 'fireball' {
@@ -269,19 +268,36 @@ function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; grou
   return (
     <div className="grid45OrbitHud" aria-hidden="true">
       {groups.map((group) => {
-        const radians = (group.angleFromTopDeg * Math.PI) / 180
-        const orbitRadius = frame.diskRadius * group.distanceFactor
-        const left = frame.centerX + Math.sin(radians) * orbitRadius
-        const top = frame.centerY - Math.cos(radians) * orbitRadius
+        const chipOffset = 34
+        const rowOffset = 58
+        const rowAngle = Math.PI / 5
+        const rowRadius = frame.diskRadius + rowOffset
+        const positions: Record<InventoryOrbitGroup['anchor'], { left: number; top: number }> = {
+          top: {
+            left: frame.centerX,
+            top: frame.centerY - frame.diskRadius - chipOffset,
+          },
+          'top-left': {
+            left: frame.centerX - Math.sin(rowAngle) * rowRadius,
+            top: frame.centerY - Math.cos(rowAngle) * rowRadius,
+          },
+          'top-right': {
+            left: frame.centerX + Math.sin(rowAngle) * rowRadius,
+            top: frame.centerY - Math.cos(rowAngle) * rowRadius,
+          },
+        }
+        const position = positions[group.anchor]
 
         return (
           <div
             key={group.id}
-            className={`grid45OrbitGroup grid45OrbitGroup${group.layout[0].toUpperCase()}${group.layout.slice(1)}`}
+            className={`grid45OrbitGroup grid45OrbitGroup${group.layout[0].toUpperCase()}${group.layout.slice(1)} grid45OrbitGroup${group.anchor
+              .split('-')
+              .map((part) => part[0].toUpperCase() + part.slice(1))
+              .join('')}`}
             style={{
-              left,
-              top,
-              transform: `translate(-50%, -50%) rotate(${group.angleFromTopDeg}deg)`,
+              left: position.left,
+              top: position.top,
             }}
           >
             {group.items.map((item) => (
@@ -305,24 +321,21 @@ function inventoryOrbitGroups(keys: InventoryItem[], boots: InventoryItem[], chi
   return [
     {
       id: 'chips',
-      angleFromTopDeg: 0,
-      distanceFactor: 0.75,
+      anchor: 'top',
       items: chips,
       layout: 'single',
     },
     {
       id: 'keys',
-      angleFromTopDeg: 230,
-      distanceFactor: 0.8,
+      anchor: 'top-left',
       items: keys,
-      layout: 'quad',
+      layout: 'row',
     },
     {
       id: 'boots',
-      angleFromTopDeg: 130,
-      distanceFactor: 0.8,
+      anchor: 'top-right',
       items: boots,
-      layout: 'pair',
+      layout: 'row',
     },
   ]
 }
