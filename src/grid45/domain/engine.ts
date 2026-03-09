@@ -49,7 +49,7 @@ export function createInitialGameState(world: MazeWorld): GameState {
   return {
     tick: 0,
     playerCellId: world.startCellId,
-    playerFacing: 'north',
+    playerFacing: 'south',
     cameraAngle: 0,
     recoveryTicks: 0,
     lastIntent: 'stay',

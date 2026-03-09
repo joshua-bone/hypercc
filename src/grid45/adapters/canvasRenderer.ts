@@ -28,6 +28,12 @@ export type Grid45RenderOptions = {
   cameraAngle?: number
   highlightCellId?: number | null
   showPlayer?: boolean
+  viewportInset?: {
+    top: number
+    right: number
+    bottom: number
+    left: number
+  }
 }
 
 function midpoint(a: Vec2, b: Vec2): Vec2 {
@@ -460,10 +466,17 @@ function projectWorldCells(
   cameraAngle: number,
   width: number,
   height: number,
+  viewportInset?: Grid45RenderOptions['viewportInset'],
 ): { centerX: number; centerY: number; diskRadius: number; projectedCells: ProjectedCell[] } {
-  const diskRadius = Math.max(1, Math.min(width, height) * 0.45)
-  const centerX = width / 2
-  const centerY = height / 2
+  const insetTop = viewportInset?.top ?? 0
+  const insetRight = viewportInset?.right ?? 0
+  const insetBottom = viewportInset?.bottom ?? 0
+  const insetLeft = viewportInset?.left ?? 0
+  const availableWidth = Math.max(1, width - insetLeft - insetRight)
+  const availableHeight = Math.max(1, height - insetTop - insetBottom)
+  const diskRadius = Math.max(1, Math.min(availableWidth, availableHeight) * 0.48 - 8)
+  const centerX = insetLeft + availableWidth / 2
+  const centerY = insetTop + availableHeight / 2
   const projectedCells = world.cells.map((cell) => ({
     cell,
     shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
@@ -483,11 +496,11 @@ export function pickGrid45CellAtPoint(
   height: number,
   x: number,
   y: number,
-  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle' | 'viewportInset'>,
 ): number | null {
   const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const { projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height)
+  const { projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, options?.viewportInset)
 
   let bestMatch: { cellId: number; distance: number } | null = null
 
@@ -517,7 +530,7 @@ export function renderGrid45Scene(
 ): void {
   const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const { diskRadius, centerX, centerY, projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height)
+  const { diskRadius, centerX, centerY, projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, options?.viewportInset)
 
   ctx.fillStyle = '#05080c'
   ctx.fillRect(0, 0, width, height)

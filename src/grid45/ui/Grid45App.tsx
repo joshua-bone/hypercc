@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { forwardRef, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
 import { renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
@@ -19,6 +19,7 @@ const EDITOR_ORBIT_SPEED = 1.2
 const EDITOR_DRAG_PAN_SCALE = 1.08
 const DOUBLE_MIDDLE_CLICK_MS = 320
 const DOUBLE_MIDDLE_CLICK_DISTANCE = 8
+const RENDER_SAFE_MARGIN = 20
 
 const keyLabels: Record<KeyColor, string> = {
   blue: 'B',
@@ -212,7 +213,7 @@ function describeGate(edge: GameState['world']['areaDag']['edges'][number]): str
   return edge.color ?? 'door'
 }
 
-function DagValidatorPanel({ snapshot }: { snapshot: GameState }) {
+const DagValidatorPanel = forwardRef<HTMLElement, { snapshot: GameState }>(function DagValidatorPanel({ snapshot }, ref) {
   const { nodes, edges, validation } = snapshot.world.areaDag
   const maxDepth = nodes.reduce((best, node) => Math.max(best, node.depth), 0)
   const columns = Array.from({ length: maxDepth + 1 }, () => [] as typeof nodes)
@@ -240,7 +241,7 @@ function DagValidatorPanel({ snapshot }: { snapshot: GameState }) {
   })
 
   return (
-    <aside className="grid45DagPanel">
+    <aside ref={ref} className="grid45DagPanel">
       <div className="grid45DagHeader">
         <div className="grid45DagTitle">DAG Validator</div>
         <div className={`grid45DagBadge${validation.passed ? ' grid45DagBadgePass' : ' grid45DagBadgeFail'}`}>
@@ -311,12 +312,17 @@ function DagValidatorPanel({ snapshot }: { snapshot: GameState }) {
       </div>
     </aside>
   )
-}
+})
 
 export default function Grid45App() {
+  const appRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawRef = useRef<(() => void) | null>(null)
   const playAgainButtonRef = useRef<HTMLButtonElement | null>(null)
+  const navRef = useRef<HTMLDivElement | null>(null)
+  const hudRef = useRef<HTMLDivElement | null>(null)
+  const editorPanelRef = useRef<HTMLDivElement | null>(null)
+  const dagPanelRef = useRef<HTMLElement | null>(null)
   const paintDragRef = useRef<PaintDragState | null>(null)
   const middleDragRef = useRef<MiddleDragState | null>(null)
   const middleClickRef = useRef<{ time: number; x: number; y: number; cellId: number | null }>({
@@ -357,14 +363,6 @@ export default function Grid45App() {
   const endTitle = playSnapshot.levelComplete ? 'You Win!' : 'You Died!'
   const editorPreviewState = createInitialGameState(editorWorld)
   const currentSceneState = activeTab === 'play' ? playSnapshot : playtestSnapshot ?? editorPreviewState
-  const currentRenderOptions: Grid45RenderOptions | undefined =
-    activeTab === 'editor' && playtestSnapshot === null
-      ? {
-          cameraCenter: editorCameraCenter,
-          cameraAngle: editorCameraAngle,
-          highlightCellId: editorSelectedCellId,
-        }
-      : undefined
   const totalChips = playSnapshot.world.chipCellIds.length
   const chipsRemaining = playSnapshot.remainingChipCellIds.size
   const chipsCollected = totalChips - chipsRemaining
@@ -424,6 +422,65 @@ export default function Grid45App() {
     } else {
       setEditorRightTool(tool)
     }
+  }
+
+  const measureViewportInset = (): NonNullable<Grid45RenderOptions['viewportInset']> => {
+    const appRect = appRef.current?.getBoundingClientRect()
+    if (!appRect) {
+      return { top: 0, right: 0, bottom: 0, left: 0 }
+    }
+
+    const inset = { top: 0, right: 0, bottom: 0, left: 0 }
+
+    const applyTop = (rect: DOMRect) => {
+      inset.top = Math.max(inset.top, rect.bottom - appRect.top + RENDER_SAFE_MARGIN)
+    }
+    const applyLeft = (rect: DOMRect) => {
+      inset.left = Math.max(inset.left, rect.right - appRect.left + RENDER_SAFE_MARGIN)
+    }
+    const applyRight = (rect: DOMRect) => {
+      inset.right = Math.max(inset.right, appRect.right - rect.left + RENDER_SAFE_MARGIN)
+    }
+    const applyBottom = (rect: DOMRect) => {
+      inset.bottom = Math.max(inset.bottom, appRect.bottom - rect.top + RENDER_SAFE_MARGIN)
+    }
+
+    const navRect = navRef.current?.getBoundingClientRect()
+    if (navRect) applyTop(navRect)
+
+    const sideRect = (activeTab === 'play' ? hudRef.current : editorPanelRef.current)?.getBoundingClientRect()
+    if (sideRect) {
+      if (sideRect.width >= appRect.width * 0.45) {
+        applyTop(sideRect)
+      } else {
+        applyLeft(sideRect)
+      }
+    }
+
+    const dagRect = activeTab === 'play' && showDevToggle && showDagValidator ? dagPanelRef.current?.getBoundingClientRect() : undefined
+    if (dagRect) {
+      if (dagRect.width >= appRect.width * 0.55) {
+        applyBottom(dagRect)
+      } else {
+        applyRight(dagRect)
+      }
+    }
+
+    return inset
+  }
+
+  const buildRenderOptions = (): Grid45RenderOptions => {
+    const options: Grid45RenderOptions = {
+      viewportInset: measureViewportInset(),
+    }
+
+    if (activeTab === 'editor' && playtestSnapshot === null) {
+      options.cameraCenter = editorCameraCenter
+      options.cameraAngle = editorCameraAngle
+      options.highlightCellId = editorSelectedCellId
+    }
+
+    return options
   }
 
   useEffect(() => {
@@ -580,7 +637,7 @@ export default function Grid45App() {
 
     const render = () => {
       const { width, height } = resizeCanvasToDisplaySize(canvas, ctx)
-      renderGrid45Scene(ctx, currentSceneState, width, height, tileset, currentRenderOptions)
+      renderGrid45Scene(ctx, currentSceneState, width, height, tileset, buildRenderOptions())
     }
 
     drawRef.current = render
@@ -591,11 +648,11 @@ export default function Grid45App() {
       drawRef.current = null
       window.removeEventListener('resize', render)
     }
-  }, [currentRenderOptions, currentSceneState, tileset])
+  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
 
   useEffect(() => {
     drawRef.current?.()
-  }, [currentSceneState, currentRenderOptions, tileset])
+  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
 
   useEffect(() => {
     if (!showPlayEndOverlay) return
@@ -753,6 +810,7 @@ export default function Grid45App() {
       {
         cameraCenter: editorCameraCenterRef.current ?? editorCameraCenter,
         cameraAngle: editorCameraAngle,
+        viewportInset: measureViewportInset(),
       },
     )
 
@@ -847,8 +905,8 @@ export default function Grid45App() {
   }
 
   return (
-    <div className="grid45App">
-      <div className="grid45Nav">
+    <div ref={appRef} className="grid45App">
+      <div ref={navRef} className="grid45Nav">
         <div className="grid45NavBrand">Hyperbolic CC</div>
         <div className="grid45NavTabs">
           <button
@@ -900,10 +958,10 @@ export default function Grid45App() {
           </div>
         </div>
       ) : null}
-      {activeTab === 'play' && showDevToggle && showDagValidator ? <DagValidatorPanel snapshot={playSnapshot} /> : null}
+      {activeTab === 'play' && showDevToggle && showDagValidator ? <DagValidatorPanel ref={dagPanelRef} snapshot={playSnapshot} /> : null}
 
       {activeTab === 'play' ? (
-        <div className="grid45Hud">
+        <div ref={hudRef} className="grid45Hud">
           <div className="grid45Eyebrow">Hyperbolic CC</div>
           <div className="grid45Line">Collect every chip, pass through the socket, then reach the exit.</div>
           <div className="grid45Line">Monsters are placed randomly and may render maps unsolveable.</div>
@@ -1026,7 +1084,7 @@ export default function Grid45App() {
           </div>
         </div>
       ) : (
-        <div className="grid45EditorPanel">
+        <div ref={editorPanelRef} className="grid45EditorPanel">
           <div className="grid45Eyebrow">Editor</div>
           {playtestSnapshot ? (
             <>
