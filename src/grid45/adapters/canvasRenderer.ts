@@ -637,6 +637,15 @@ export function renderGrid45Scene(
     const monsterShape = projectedCells[monster.cellId]?.shape
     if (!monsterShape) continue
 
+    if (monster.kind === 'dirt-block') {
+      if (tileset) {
+        drawCellSprite(ctx, monsterShape, tileset.dirtBlockSprite)
+      } else {
+        fillCell(ctx, monsterShape.outline, '#7e6547')
+      }
+      continue
+    }
+
     const monsterCenter = shapeCenter(monsterShape)
     const { minX, minY, maxX, maxY } = outlineBounds(monsterShape.outline)
     const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
@@ -656,10 +665,7 @@ export function renderGrid45Scene(
       }
     } else {
       ctx.fillStyle =
-        monster.kind === 'dirt-block' ? '#7e6547' :
-        monster.kind === 'pink-ball' ? '#ff71c4' :
-        monster.kind === 'teeth' ? '#f1c9f9' :
-        '#7b311d'
+        monster.kind === 'pink-ball' ? '#ff71c4' : monster.kind === 'teeth' ? '#f1c9f9' : '#7b311d'
       ctx.beginPath()
       ctx.arc(monsterCenter.x, monsterCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
       ctx.fill()

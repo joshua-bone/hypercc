@@ -347,6 +347,7 @@ export default function Grid45App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawRef = useRef<(() => void) | null>(null)
   const playAgainButtonRef = useRef<HTMLButtonElement | null>(null)
+  const playtestAgainButtonRef = useRef<HTMLButtonElement | null>(null)
   const navRef = useRef<HTMLDivElement | null>(null)
   const hudRef = useRef<HTMLDivElement | null>(null)
   const editorPanelRef = useRef<HTMLDivElement | null>(null)
@@ -390,7 +391,9 @@ export default function Grid45App() {
   const [editorRotateIntent, setEditorRotateIntent] = useState<-1 | 0 | 1>(0)
   const showDevToggle = import.meta.env.DEV
   const showPlayEndOverlay = activeTab === 'play' && (playSnapshot.levelComplete || playSnapshot.playerDead)
+  const showPlaytestEndOverlay = activeTab === 'editor' && !!playtestSnapshot && (playtestSnapshot.levelComplete || playtestSnapshot.playerDead)
   const endTitle = playSnapshot.levelComplete ? 'You Win!' : 'You Died!'
+  const playtestEndTitle = playtestSnapshot?.levelComplete ? 'You Win!' : 'You Lose!'
   const editorPreviewState = createInitialGameState(editorWorld)
   const currentSceneState = activeTab === 'play' ? playSnapshot : playtestSnapshot ?? editorPreviewState
   const totalChips = playSnapshot.world.chipCellIds.length
@@ -406,8 +409,8 @@ export default function Grid45App() {
     ? 'Step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Restart replays this maze; Generate builds a new one.'
     : 'Arrow keys or WASD move. Space starts time. Restart replays this maze; Generate builds a new one.'
   const editorPlaytestInstructionLine = stepModeEnabled
-    ? 'Playtest step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Win, lose, or press ESC to return to the editor.'
-    : 'Playtest running. Arrow keys or WASD move, Space starts time. Win, lose, or press ESC to return to the editor.'
+    ? 'Playtest step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Press ESC to return to the editor.'
+    : 'Playtest running. Arrow keys or WASD move, Space starts time. Press ESC to return to the editor.'
 
   const restoreEditorFrame = (entry: EditorHistoryEntry) => {
     editorCameraCenterRef.current = entry.cameraCenter
@@ -587,15 +590,6 @@ export default function Grid45App() {
     setPlaytestSession(null)
     setPlaytestSnapshot(null)
   }, [activeTab, playtestSession])
-
-  useEffect(() => {
-    if (!playtestSession || !playtestSnapshot) return
-    if (!playtestSnapshot.levelComplete && !playtestSnapshot.playerDead) return
-
-    playtestSession.stop()
-    setPlaytestSession(null)
-    setPlaytestSnapshot(null)
-  }, [playtestSession, playtestSnapshot])
 
   useEffect(() => {
     if (activeTab === 'play') {
@@ -782,6 +776,25 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [showPlayEndOverlay, playSession])
+
+  useEffect(() => {
+    if (!showPlaytestEndOverlay || !playtestSession) return
+
+    playtestAgainButtonRef.current?.focus()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isSpace = event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar'
+      const isEnter = event.code === 'Enter' || event.key === 'Enter'
+      if (!isSpace && !isEnter) return
+      event.preventDefault()
+      playtestSession.restart()
+    }
+
+    window.addEventListener('keydown', onKeyDown, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [showPlaytestEndOverlay, playtestSession])
 
   useEffect(() => {
     if (activeTab !== 'editor' || playtestSession) return
@@ -1065,6 +1078,33 @@ export default function Grid45App() {
               onClick={generateNewMap}
             >
               Play Another
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showPlaytestEndOverlay ? (
+        <div className={`grid45EndOverlay${playtestSnapshot?.playerDead ? ' grid45EndOverlayLose' : ''}`}>
+          <div className="grid45EndTitle">{playtestEndTitle}</div>
+          <div className="grid45EndCopy">Press Space or Enter to play again on this same test map.</div>
+          <div className="grid45EndActions">
+            <button
+              ref={playtestAgainButtonRef}
+              className="grid45Button grid45ButtonPrimary"
+              type="button"
+              onClick={() => playtestSession?.restart()}
+            >
+              Play Again
+            </button>
+            <button
+              className="grid45Button"
+              type="button"
+              onClick={() => {
+                playtestSession?.stop()
+                setPlaytestSession(null)
+                setPlaytestSnapshot(null)
+              }}
+            >
+              Return to Editor
             </button>
           </div>
         </div>
