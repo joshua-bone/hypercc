@@ -188,6 +188,10 @@ function createPlaytestSession(world: MazeWorld): Grid45Session {
   })
 }
 
+function isSpaceKey(event: KeyboardEvent): boolean {
+  return event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar'
+}
+
 function describeOutcome(snapshot: GameState): string {
   if (snapshot.levelComplete) return 'You Win!'
   if (snapshot.playerDead) return 'You Died!'
@@ -495,12 +499,28 @@ export default function Grid45App() {
 
   useEffect(() => {
     if (activeTab === 'play') {
-      return attachKeyboardIntent(window, playSession.setIntent)
+      const detachKeyboard = attachKeyboardIntent(window, playSession.setIntent)
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (!isSpaceKey(event)) return
+        event.preventDefault()
+        playSession.start()
+      }
+
+      window.addEventListener('keydown', onKeyDown, { passive: false })
+      return () => {
+        detachKeyboard()
+        window.removeEventListener('keydown', onKeyDown)
+      }
     }
 
     if (playtestSession) {
       const detachKeyboard = attachKeyboardIntent(window, playtestSession.setIntent)
       const onKeyDown = (event: KeyboardEvent) => {
+        if (isSpaceKey(event)) {
+          event.preventDefault()
+          playtestSession.start()
+          return
+        }
         if (event.key !== 'Escape') return
         event.preventDefault()
         playtestSession.stop()

@@ -140,11 +140,6 @@ function outlineBounds(outline: ProjectedOutline): { minX: number; minY: number;
   return { minX, minY, maxX, maxY }
 }
 
-function directionFromViewDelta(dx: number, dy: number): Direction {
-  if (Math.abs(dx) > Math.abs(dy)) return dx >= 0 ? 'east' : 'west'
-  return dy >= 0 ? 'north' : 'south'
-}
-
 function assignDirectionSides(vertices: Vec2[], center: Vec2): Record<Direction, number> {
   const sideSignals = vertices.map((a, side) => {
     const b = vertices[(side + 1) % vertices.length]
@@ -204,19 +199,54 @@ function shapeCenter(shape: ProjectedShape): ScreenPoint {
   }
 }
 
-function monsterScreenFacing(
+function directionBaseAngle(direction: Direction): number {
+  if (direction === 'east') return Math.PI / 2
+  if (direction === 'south') return Math.PI
+  if (direction === 'west') return -Math.PI / 2
+  return 0
+}
+
+function monsterFacingVector(
   monster: MonsterState,
   state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>,
   options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
-): Direction {
+): Vec2 {
   const monsterCell = state.world.cells[monster.cellId]
-  const sideIndex = assignDirectionSides(monsterCell.vertices, monsterCell.center)[monster.facing]
-  const sideMidpoint = midpoint(monsterCell.vertices[sideIndex], monsterCell.vertices[(sideIndex + 1) % monsterCell.vertices.length])
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
   const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const monsterView = toCameraView(monsterCell.center, cameraCenter, cameraAngle)
+  const targetId = monsterCell.exits[monster.facing]
+  if (targetId !== null) {
+    const targetView = toCameraView(state.world.cells[targetId].center, cameraCenter, cameraAngle)
+    return {
+      x: targetView.x - monsterView.x,
+      y: targetView.y - monsterView.y,
+    }
+  }
+
+  const sideIndex = assignDirectionSides(monsterCell.vertices, monsterCell.center)[monster.facing]
+  const sideMidpoint = midpoint(monsterCell.vertices[sideIndex], monsterCell.vertices[(sideIndex + 1) % monsterCell.vertices.length])
   const facingView = toCameraView(sideMidpoint, cameraCenter, cameraAngle)
-  return directionFromViewDelta(facingView.x - monsterView.x, facingView.y - monsterView.y)
+  return {
+    x: facingView.x - monsterView.x,
+    y: facingView.y - monsterView.y,
+  }
+}
+
+function monsterSpriteRotation(
+  monster: MonsterState,
+  state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
+): number {
+  const facingVector = monsterFacingVector(monster, state, options)
+  const actualAngle = Math.atan2(facingVector.x, facingVector.y)
+  return actualAngle - directionBaseAngle(monster.facing)
+}
+
+function monsterBaseSprite(monster: MonsterState, tileset: Grid45Tileset): CanvasImageSource {
+  if (monster.kind === 'pink-ball') return tileset.pinkBallSprite
+  if (monster.kind === 'teeth') return tileset.teethSprites[monster.facing]
+  return tileset.antSprites[monster.facing]
 }
 
 function traceCellPath(ctx: CanvasRenderingContext2D, outline: ProjectedOutline): void {
@@ -526,19 +556,14 @@ export function renderGrid45Scene(
     const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
 
     if (tileset) {
-      const screenFacing = monsterScreenFacing(monster, state, { cameraCenter, cameraAngle })
-      const sprite =
-        monster.kind === 'pink-ball' ? tileset.pinkBallSprite :
-        monster.kind === 'teeth' ? tileset.teethSprites[screenFacing] :
-        tileset.antSprites[screenFacing]
+      const sprite = monsterBaseSprite(monster, tileset)
+      const rotation = monsterSpriteRotation(monster, state, { cameraCenter, cameraAngle })
       ctx.imageSmoothingEnabled = false
-      ctx.drawImage(
-        sprite,
-        monsterCenter.x - spriteSize / 2,
-        monsterCenter.y - spriteSize / 2,
-        spriteSize,
-        spriteSize,
-      )
+      ctx.save()
+      ctx.translate(monsterCenter.x, monsterCenter.y)
+      ctx.rotate(rotation)
+      ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
+      ctx.restore()
     } else {
       ctx.fillStyle =
         monster.kind === 'pink-ball' ? '#ff71c4' :
