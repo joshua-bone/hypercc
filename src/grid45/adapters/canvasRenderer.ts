@@ -256,6 +256,71 @@ function monsterBaseSprite(monster: MonsterState, tileset: Grid45Tileset): Canva
   return tileset.antSprites[monster.facing]
 }
 
+function drawPinkBallArrow(
+  ctx: CanvasRenderingContext2D,
+  center: ScreenPoint,
+  facingVector: Vec2,
+  spriteSize: number,
+): void {
+  const screenVector = {
+    x: facingVector.x,
+    y: -facingVector.y,
+  }
+  const length = Math.hypot(screenVector.x, screenVector.y)
+  if (length < 1e-6) return
+
+  const direction = {
+    x: screenVector.x / length,
+    y: screenVector.y / length,
+  }
+  const start = {
+    x: center.x + direction.x * (spriteSize * 0.1),
+    y: center.y + direction.y * (spriteSize * 0.1),
+  }
+  const end = {
+    x: center.x + direction.x * (spriteSize * 0.52),
+    y: center.y + direction.y * (spriteSize * 0.52),
+  }
+  const headLength = spriteSize * 0.18
+  const headWidth = spriteSize * 0.12
+  const left = {
+    x: end.x - direction.x * headLength - direction.y * headWidth,
+    y: end.y - direction.y * headLength + direction.x * headWidth,
+  }
+  const right = {
+    x: end.x - direction.x * headLength + direction.y * headWidth,
+    y: end.y - direction.y * headLength - direction.x * headWidth,
+  }
+
+  ctx.save()
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = '#11161c'
+  ctx.lineWidth = Math.max(2, spriteSize * 0.11)
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  ctx.lineTo(end.x, end.y)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(left.x, left.y)
+  ctx.lineTo(end.x, end.y)
+  ctx.lineTo(right.x, right.y)
+  ctx.stroke()
+
+  ctx.strokeStyle = '#f5fbff'
+  ctx.lineWidth = Math.max(1.25, spriteSize * 0.06)
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  ctx.lineTo(end.x, end.y)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(left.x, left.y)
+  ctx.lineTo(end.x, end.y)
+  ctx.lineTo(right.x, right.y)
+  ctx.stroke()
+  ctx.restore()
+}
+
 function traceCellPath(ctx: CanvasRenderingContext2D, outline: ProjectedOutline): void {
   traceProjectedPath(ctx, outline)
 }
@@ -575,12 +640,16 @@ export function renderGrid45Scene(
     if (tileset) {
       const sprite = monsterBaseSprite(monster, tileset)
       const rotation = monsterSpriteRotation(monster, state, { cameraCenter, cameraAngle })
+      const facingVector = monsterFacingVector(monster, state, { cameraCenter, cameraAngle })
       ctx.imageSmoothingEnabled = false
       ctx.save()
       ctx.translate(monsterCenter.x, monsterCenter.y)
       ctx.rotate(rotation)
       ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
       ctx.restore()
+      if (monster.kind === 'pink-ball') {
+        drawPinkBallArrow(ctx, monsterCenter, facingVector, spriteSize)
+      }
     } else {
       ctx.fillStyle =
         monster.kind === 'pink-ball' ? '#ff71c4' :
