@@ -127,6 +127,15 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
   return normalizeEditorWorld(nextWorld)
 }
 
+export function rotateEditorMobAtCell(world: MazeWorld, cellId: number, delta: -1 | 1): MazeWorld {
+  const monsterIndex = world.initialMonsters.findIndex((monster) => monster.cellId === cellId)
+  if (monsterIndex < 0) return world
+
+  const nextWorld = cloneMazeWorld(world)
+  nextWorld.initialMonsters[monsterIndex].facing = rotateDirection(nextWorld.initialMonsters[monsterIndex].facing, delta)
+  return normalizeEditorWorld(nextWorld)
+}
+
 export function clearEditorWorld(world: MazeWorld, startCellId = world.startCellId): MazeWorld {
   return createBlankFloorEditorWorld(world, startCellId)
 }

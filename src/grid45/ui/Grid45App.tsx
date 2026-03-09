@@ -8,7 +8,7 @@ import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { createInitialGameState } from '../domain/engine'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
 import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
-import { clearEditorWorld, createBlankFloorEditorWorld, cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
+import { clearEditorWorld, createBlankFloorEditorWorld, cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, rotateEditorMobAtCell, type EditorPaintTool } from './editorHelpers'
 import type { Vec2 } from '../../hyper/vec2'
 
 const MIN_MONSTER_COUNT = 0
@@ -408,6 +408,12 @@ export default function Grid45App() {
     setEditorCameraCenter(center)
   }
 
+  const rotateSelectedEditorMob = (delta: -1 | 1) => {
+    if (!editorWorld.initialMonsters.some((monster) => monster.cellId === editorSelectedCellId)) return
+    pushEditorUndo()
+    setEditorWorld((world) => rotateEditorMobAtCell(world, editorSelectedCellId, delta))
+  }
+
   const assignEditorTool = (paintButton: 'left' | 'right', tool: EditorPaintTool) => {
     if (paintButton === 'left') {
       setEditorLeftTool(tool)
@@ -514,6 +520,12 @@ export default function Grid45App() {
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault()
         undoEditor()
+      } else if (event.key === '<' || (event.code === 'Comma' && event.shiftKey)) {
+        event.preventDefault()
+        rotateSelectedEditorMob(-1)
+      } else if (event.key === '>' || (event.code === 'Period' && event.shiftKey)) {
+        event.preventDefault()
+        rotateSelectedEditorMob(1)
       } else if (event.key === 'q' || event.key === 'Q') {
         event.preventDefault()
         setEditorRotateIntent(-1)
@@ -537,7 +549,7 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeTab, playSession, playtestSession, undoEditor])
+  }, [activeTab, playSession, playtestSession, rotateSelectedEditorMob, undoEditor])
 
   useEffect(() => {
     const canvas = canvasRef.current
