@@ -210,6 +210,12 @@ function isUndoKey(event: KeyboardEvent): boolean {
   return !event.ctrlKey && !event.metaKey && !event.altKey && (event.key === 'z' || event.key === 'Z')
 }
 
+function editorRotationDeltaFromKey(event: KeyboardEvent): -1 | 1 | null {
+  if (event.code === 'Comma' || event.key === '<' || event.key === ',') return -1
+  if (event.code === 'Period' || event.key === '>' || event.key === '.') return 1
+  return null
+}
+
 function describeOutcome(snapshot: GameState): string {
   if (snapshot.levelComplete) return 'You Win!'
   if (snapshot.playerDead) return 'You Died!'
@@ -692,13 +698,14 @@ export default function Grid45App() {
 
     const detachKeyboard = attachKeyboardIntent(window, setEditorIntent)
     const onKeyDown = (event: KeyboardEvent) => {
+      const rotationDelta = editorRotationDeltaFromKey(event)
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault()
         undoEditor()
-      } else if (event.key === '<' || (event.code === 'Comma' && event.shiftKey)) {
+      } else if (rotationDelta === -1) {
         event.preventDefault()
         rotateSelectedEditorMob(-1)
-      } else if (event.key === '>' || (event.code === 'Period' && event.shiftKey)) {
+      } else if (rotationDelta === 1) {
         event.preventDefault()
         rotateSelectedEditorMob(1)
       } else if (event.key === 'q' || event.key === 'Q') {
