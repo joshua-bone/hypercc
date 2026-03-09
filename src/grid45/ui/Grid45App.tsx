@@ -1013,7 +1013,7 @@ export default function Grid45App() {
             type="button"
             onClick={() => setActiveTab('play')}
           >
-            Play
+            Home
           </button>
           <button
             className={`grid45NavTab${activeTab === 'editor' ? ' grid45NavTabActive' : ''}`}
