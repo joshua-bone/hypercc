@@ -226,11 +226,11 @@ body {
 }
 
 .grid45OrbitGroupTopLeft {
-  justify-content: flex-start;
+  transform: translate(-100%, -50%);
 }
 
 .grid45OrbitGroupTopRight {
-  justify-content: flex-end;
+  transform: translate(0, -50%);
 }
 
 .grid45InventoryItem {
@@ -245,6 +245,8 @@ body {
   background: rgba(12, 17, 23, 0.9);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
   backdrop-filter: blur(10px);
+  transform: rotate(var(--inventory-rotation, 0deg));
+  transform-origin: center center;
 }
 
 .grid45InventoryItemInactive {
@@ -277,6 +279,7 @@ body {
   font-weight: 800;
   line-height: 16px;
   text-align: center;
+  transform: rotate(calc(var(--inventory-rotation, 0deg) * -1));
 }
 
 .grid45Toggle {

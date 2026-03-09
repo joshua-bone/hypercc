@@ -116,6 +116,7 @@ type InventoryOrbitGroup = {
   anchor: 'top' | 'top-left' | 'top-right'
   items: InventoryItem[]
   layout: 'single' | 'row'
+  rotationDeg: number
 }
 
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'glider' | 'fireball' {
@@ -268,8 +269,8 @@ function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; grou
   return (
     <div className="grid45OrbitHud" aria-hidden="true">
       {groups.map((group) => {
-        const chipOffset = 34
-        const rowOffset = 58
+        const chipOffset = 40
+        const rowOffset = 72
         const rowAngle = Math.PI / 5
         const rowRadius = frame.diskRadius + rowOffset
         const positions: Record<InventoryOrbitGroup['anchor'], { left: number; top: number }> = {
@@ -298,6 +299,7 @@ function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; grou
             style={{
               left: position.left,
               top: position.top,
+              ['--inventory-rotation' as string]: `${group.rotationDeg}deg`,
             }}
           >
             {group.items.map((item) => (
@@ -320,22 +322,18 @@ function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; grou
 function inventoryOrbitGroups(keys: InventoryItem[], boots: InventoryItem[], chips: InventoryItem[]): InventoryOrbitGroup[] {
   return [
     {
-      id: 'chips',
-      anchor: 'top',
-      items: chips,
-      layout: 'single',
-    },
-    {
-      id: 'keys',
+      id: 'chips-keys',
       anchor: 'top-left',
-      items: keys,
+      items: [...chips, ...keys],
       layout: 'row',
+      rotationDeg: -36,
     },
     {
       id: 'boots',
       anchor: 'top-right',
       items: boots,
       layout: 'row',
+      rotationDeg: 36,
     },
   ]
 }
