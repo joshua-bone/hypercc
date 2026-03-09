@@ -112,7 +112,7 @@ function resolvedCellKind(state: Pick<GameState, 'world' | 'togglePhase' | 'terr
 }
 
 function canPlayerEnterTerrain(kind: CellKind): boolean {
-  return kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'dirt' || kind === 'gravel'
+  return kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'fire' || kind === 'dirt' || kind === 'gravel'
 }
 
 function canMonsterEnterTerrain(kind: CellKind, monsterKind: MonsterKind): boolean {
@@ -165,7 +165,7 @@ function dirtBlockCanEnterCell(
 
   const cell = state.world.cells[targetId]
   const kind = resolvedCellKind(state, targetId)
-  if (!(kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'gravel')) return false
+  if (!(kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'fire' || kind === 'gravel')) return false
   if (cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || isBombActive(state, targetId)) return true
 
   const keyColor = keyColorFromFeature(cell.feature)
@@ -543,7 +543,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           if (enteredTerrain === 'dirt') {
             terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
           }
-          if (enteredTerrain === 'water') {
+          if (enteredTerrain === 'water' || enteredTerrain === 'fire') {
             playerDead = true
             recoveryTicks = 0
             lastOutcome = 'dead'
@@ -608,7 +608,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         if (enteredTerrain === 'dirt') {
           terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
         }
-        if (enteredTerrain === 'water') {
+        if (enteredTerrain === 'water' || enteredTerrain === 'fire') {
           playerDead = true
           recoveryTicks = 0
           lastOutcome = 'dead'
