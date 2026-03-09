@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
-import { renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45RenderOptions } from '../adapters/canvasRenderer'
+import { computeGrid45DiskFrame, renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
 import { attachKeyboardIntent } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
@@ -109,6 +109,14 @@ type InventoryItem = {
   iconSrc?: string
   count?: number
   active?: boolean
+}
+
+type InventoryOrbitGroup = {
+  id: string
+  angleFromTopDeg: number
+  distanceFactor: number
+  items: InventoryItem[]
+  layout: 'single' | 'pair' | 'quad'
 }
 
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'glider' | 'fireball' {
@@ -257,24 +265,76 @@ function describeOutcome(snapshot: GameState): string {
   return 'standing by'
 }
 
-function InventoryGroup({ title, items }: { title: string; items: InventoryItem[] }) {
+function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; groups: InventoryOrbitGroup[] }) {
   return (
-    <div className="grid45InventoryGroup">
-      <div className="grid45InventoryTitle">{title}</div>
-      <div className="grid45InventoryItems">
-        {items.map((item) => (
+    <div className="grid45OrbitHud" aria-hidden="true">
+      {groups.map((group) => {
+        const radians = (group.angleFromTopDeg * Math.PI) / 180
+        const orbitRadius = frame.diskRadius * group.distanceFactor
+        const left = frame.centerX + Math.sin(radians) * orbitRadius
+        const top = frame.centerY - Math.cos(radians) * orbitRadius
+
+        return (
           <div
-            key={item.id}
-            className={`grid45InventoryItem${item.active === false ? ' grid45InventoryItemInactive' : ''}`}
-            title={item.label}
+            key={group.id}
+            className={`grid45OrbitGroup grid45OrbitGroup${group.layout[0].toUpperCase()}${group.layout.slice(1)}`}
+            style={{
+              left,
+              top,
+              transform: `translate(-50%, -50%) rotate(${group.angleFromTopDeg}deg)`,
+            }}
           >
-            {item.iconSrc ? <img className="grid45InventoryIcon" src={item.iconSrc} alt={item.label} /> : <span className="grid45InventoryFallback">{item.label[0]}</span>}
-            {item.count !== undefined ? <span className="grid45InventoryCount">{item.count}</span> : null}
+            {group.items.map((item) => (
+              <div
+                key={item.id}
+                className={`grid45InventoryItem${item.active === false ? ' grid45InventoryItemInactive' : ''}`}
+                title={item.label}
+              >
+                {item.iconSrc ? <img className="grid45InventoryIcon" src={item.iconSrc} alt={item.label} /> : <span className="grid45InventoryFallback">{item.label[0]}</span>}
+                {item.count !== undefined ? <span className="grid45InventoryCount">{item.count}</span> : null}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )
+      })}
     </div>
   )
+}
+
+function inventoryOrbitGroups(keys: InventoryItem[], boots: InventoryItem[], chips: InventoryItem[]): InventoryOrbitGroup[] {
+  return [
+    {
+      id: 'chips',
+      angleFromTopDeg: 0,
+      distanceFactor: 0.75,
+      items: chips,
+      layout: 'single',
+    },
+    {
+      id: 'keys',
+      angleFromTopDeg: 230,
+      distanceFactor: 0.8,
+      items: keys,
+      layout: 'quad',
+    },
+    {
+      id: 'boots',
+      angleFromTopDeg: 130,
+      distanceFactor: 0.8,
+      items: boots,
+      layout: 'pair',
+    },
+  ]
+}
+
+function orbitFrameForCanvas(
+  canvas: HTMLCanvasElement | null,
+  viewportInset: Grid45RenderOptions['viewportInset'],
+): Grid45DiskFrame | null {
+  if (!canvas) return null
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return null
+  return computeGrid45DiskFrame(rect.width, rect.height, viewportInset)
 }
 
 function describeGate(edge: GameState['world']['areaDag']['edges'][number]): string {
@@ -418,6 +478,7 @@ export default function Grid45App() {
   const [tankCount, setTankCount] = useState<number>(defaultTankCount)
   const [stepModeEnabled, setStepModeEnabled] = useState(false)
   const [seedInput, setSeedInput] = useState('')
+  const [viewportVersion, setViewportVersion] = useState(0)
   const [editorBlankSize, setEditorBlankSize] = useState<WorldSize>(defaultWorldSize)
   const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => cloneMazeWorld(playSession.getSnapshot().world))
   const [editorHistory, setEditorHistory] = useState<EditorHistoryEntry[]>([])
@@ -437,9 +498,7 @@ export default function Grid45App() {
   const playtestEndTitle = playtestSnapshot?.levelComplete ? 'You Win!' : 'You Lose!'
   const editorPreviewState = createInitialGameState(editorWorld)
   const currentSceneState = activeTab === 'play' ? playSnapshot : playtestSnapshot ?? editorPreviewState
-  const totalChips = playSnapshot.world.chipCellIds.length
   const chipsRemaining = playSnapshot.remainingChipCellIds.size
-  const chipsCollected = totalChips - chipsRemaining
   const antTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'ant').length
   const pinkBallTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
   const teethTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'teeth').length
@@ -450,6 +509,7 @@ export default function Grid45App() {
     label: `${keyLabels[color]} key`,
     iconSrc: paletteIcons[`key-${color}`],
     count: playSnapshot.keyInventory[color],
+    active: playSnapshot.keyInventory[color] > 0,
   }))
   const playInventoryBoots: InventoryItem[] = [
     {
@@ -481,6 +541,7 @@ export default function Grid45App() {
           label: `${keyLabels[color]} key`,
           iconSrc: paletteIcons[`key-${color}`],
           count: playtestSnapshot.keyInventory[color],
+          active: playtestSnapshot.keyInventory[color] > 0,
         }))
   const playtestInventoryBoots: InventoryItem[] =
     playtestSnapshot === null
@@ -629,6 +690,16 @@ export default function Grid45App() {
     return options
   }
 
+  const orbitSnapshot = activeTab === 'play' ? playSnapshot : playtestSnapshot
+  const orbitGroups =
+    activeTab === 'play'
+      ? inventoryOrbitGroups(playInventoryKeys, playInventoryBoots, playInventoryChips)
+      : playtestSnapshot
+        ? inventoryOrbitGroups(playtestInventoryKeys, playtestInventoryBoots, playtestInventoryChips)
+        : []
+  void viewportVersion
+  const orbitFrame = orbitSnapshot ? orbitFrameForCanvas(canvasRef.current, measureViewportInset()) : null
+
   useEffect(() => {
     let active = true
 
@@ -655,6 +726,17 @@ export default function Grid45App() {
   useEffect(() => {
     editorCameraAngleRef.current = editorCameraAngle
   }, [editorCameraAngle])
+
+  useEffect(() => {
+    const handleResize = () => {
+      setViewportVersion((value) => value + 1)
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+    }
+  }, [])
 
   useEffect(() => {
     if (!tileset) return
@@ -1216,6 +1298,7 @@ export default function Grid45App() {
         </div>
       ) : null}
       {activeTab === 'play' && showDevToggle && showDagValidator ? <DagValidatorPanel ref={dagPanelRef} snapshot={playSnapshot} /> : null}
+      {orbitFrame && orbitGroups.length > 0 ? <CircularInventoryRing frame={orbitFrame} groups={orbitGroups} /> : null}
 
       {activeTab === 'play' ? (
         <div ref={hudRef} className="grid45Hud">
@@ -1225,10 +1308,6 @@ export default function Grid45App() {
           <div className="grid45Line">{playInstructionLine}</div>
           <div className="grid45Metrics">Tick {playSnapshot.tick}</div>
           <div className="grid45Metrics">State: {describeOutcome(playSnapshot)}</div>
-          <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
-          <InventoryGroup title="Chips Remaining" items={playInventoryChips} />
-          <InventoryGroup title="Keys" items={playInventoryKeys} />
-          <InventoryGroup title="Boots" items={playInventoryBoots} />
           <div className="grid45Metrics">Ants: {antTotal}</div>
           <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
           <div className="grid45Metrics">Teeth: {teethTotal}</div>
@@ -1380,10 +1459,6 @@ export default function Grid45App() {
               <div className="grid45Line">{editorPlaytestInstructionLine}</div>
               <div className="grid45Metrics">Tick: {playtestSnapshot.tick}</div>
               <div className="grid45Metrics">State: {describeOutcome(playtestSnapshot)}</div>
-              <div className="grid45Metrics">Chips: {playtestSnapshot.world.chipCellIds.length - playtestSnapshot.remainingChipCellIds.size} / {playtestSnapshot.world.chipCellIds.length}</div>
-              <InventoryGroup title="Chips Remaining" items={playtestInventoryChips} />
-              <InventoryGroup title="Keys" items={playtestInventoryKeys} />
-              <InventoryGroup title="Boots" items={playtestInventoryBoots} />
               <label className="grid45Toggle">
                 <input
                   type="checkbox"

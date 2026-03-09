@@ -204,16 +204,43 @@ body {
   gap: 8px;
 }
 
+.grid45OrbitHud {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.grid45OrbitGroup {
+  position: absolute;
+  display: grid;
+  gap: 10px;
+}
+
+.grid45OrbitGroupSingle {
+  grid-template-columns: 1fr;
+}
+
+.grid45OrbitGroupPair {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid45OrbitGroupQuad {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .grid45InventoryItem {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border: 1px solid rgba(241, 234, 216, 0.16);
-  border-radius: 10px;
-  background: rgba(12, 17, 23, 0.88);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.9);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(10px);
 }
 
 .grid45InventoryItemInactive {
@@ -221,8 +248,8 @@ body {
 }
 
 .grid45InventoryIcon {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   image-rendering: pixelated;
 }
 

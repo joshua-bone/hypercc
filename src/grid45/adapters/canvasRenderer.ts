@@ -36,6 +36,12 @@ export type Grid45RenderOptions = {
   }
 }
 
+export type Grid45DiskFrame = {
+  centerX: number
+  centerY: number
+  diskRadius: number
+}
+
 function midpoint(a: Vec2, b: Vec2): Vec2 {
   return {
     x: (a.x + b.x) / 2,
@@ -550,14 +556,11 @@ export function resizeCanvasToDisplaySize(
   }
 }
 
-function projectWorldCells(
-  world: GameState['world'],
-  viewCenter: Vec2,
-  cameraAngle: number,
+export function computeGrid45DiskFrame(
   width: number,
   height: number,
   viewportInset?: Grid45RenderOptions['viewportInset'],
-): { centerX: number; centerY: number; diskRadius: number; projectedCells: ProjectedCell[] } {
+): Grid45DiskFrame {
   const insetTop = viewportInset?.top ?? 0
   const insetRight = viewportInset?.right ?? 0
   const insetBottom = viewportInset?.bottom ?? 0
@@ -567,6 +570,23 @@ function projectWorldCells(
   const diskRadius = Math.max(1, Math.min(availableWidth, availableHeight) * 0.48 - 8)
   const centerX = insetLeft + availableWidth / 2
   const centerY = insetTop + availableHeight / 2
+
+  return {
+    centerX,
+    centerY,
+    diskRadius,
+  }
+}
+
+function projectWorldCells(
+  world: GameState['world'],
+  viewCenter: Vec2,
+  cameraAngle: number,
+  width: number,
+  height: number,
+  viewportInset?: Grid45RenderOptions['viewportInset'],
+): { centerX: number; centerY: number; diskRadius: number; projectedCells: ProjectedCell[] } {
+  const { centerX, centerY, diskRadius } = computeGrid45DiskFrame(width, height, viewportInset)
   const projectedCells = world.cells.map((cell) => ({
     cell,
     shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
