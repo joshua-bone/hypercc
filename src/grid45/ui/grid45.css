@@ -211,26 +211,9 @@ body {
   pointer-events: none;
 }
 
-.grid45OrbitGroup {
+.grid45OrbitSlot {
   position: absolute;
-  display: flex;
-  gap: 10px;
-}
-
-.grid45OrbitGroupSingle {
-  transform: translate(-50%, -100%);
-}
-
-.grid45OrbitGroupRow {
   transform: translate(-50%, -50%);
-}
-
-.grid45OrbitGroupTopLeft {
-  transform: translate(-100%, -50%);
-}
-
-.grid45OrbitGroupTopRight {
-  transform: translate(0, -50%);
 }
 
 .grid45InventoryItem {

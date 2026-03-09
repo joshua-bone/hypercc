@@ -113,10 +113,10 @@ type InventoryItem = {
 
 type InventoryOrbitGroup = {
   id: string
-  anchor: 'top' | 'top-left' | 'top-right'
   items: InventoryItem[]
-  layout: 'single' | 'row'
-  rotationDeg: number
+  centerAngleDeg: number
+  stepDeg: number
+  radiusOffset: number
 }
 
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'glider' | 'fireball' {
@@ -269,49 +269,37 @@ function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; grou
   return (
     <div className="grid45OrbitHud" aria-hidden="true">
       {groups.map((group) => {
-        const chipOffset = 40
-        const rowOffset = 72
-        const rowAngle = Math.PI / 5
-        const rowRadius = frame.diskRadius + rowOffset
-        const positions: Record<InventoryOrbitGroup['anchor'], { left: number; top: number }> = {
-          top: {
-            left: frame.centerX,
-            top: frame.centerY - frame.diskRadius - chipOffset,
-          },
-          'top-left': {
-            left: frame.centerX - Math.sin(rowAngle) * rowRadius,
-            top: frame.centerY - Math.cos(rowAngle) * rowRadius,
-          },
-          'top-right': {
-            left: frame.centerX + Math.sin(rowAngle) * rowRadius,
-            top: frame.centerY - Math.cos(rowAngle) * rowRadius,
-          },
-        }
-        const position = positions[group.anchor]
+        const radius = frame.diskRadius + group.radiusOffset
+        const startAngleDeg = group.centerAngleDeg - (group.stepDeg * (group.items.length - 1)) / 2
 
         return (
-          <div
-            key={group.id}
-            className={`grid45OrbitGroup grid45OrbitGroup${group.layout[0].toUpperCase()}${group.layout.slice(1)} grid45OrbitGroup${group.anchor
-              .split('-')
-              .map((part) => part[0].toUpperCase() + part.slice(1))
-              .join('')}`}
-            style={{
-              left: position.left,
-              top: position.top,
-              ['--inventory-rotation' as string]: `${group.rotationDeg}deg`,
-            }}
-          >
-            {group.items.map((item) => (
-              <div
-                key={item.id}
-                className={`grid45InventoryItem${item.active === false ? ' grid45InventoryItemInactive' : ''}`}
-                title={item.label}
-              >
-                {item.iconSrc ? <img className="grid45InventoryIcon" src={item.iconSrc} alt={item.label} /> : <span className="grid45InventoryFallback">{item.label[0]}</span>}
-                {item.count !== undefined ? <span className="grid45InventoryCount">{item.count}</span> : null}
-              </div>
-            ))}
+          <div key={group.id}>
+            {group.items.map((item, index) => {
+              const angleDeg = startAngleDeg + group.stepDeg * index
+              const angleRad = (angleDeg * Math.PI) / 180
+              const left = frame.centerX + Math.sin(angleRad) * radius
+              const top = frame.centerY - Math.cos(angleRad) * radius
+
+              return (
+                <div
+                  key={item.id}
+                  className="grid45OrbitSlot"
+                  style={{
+                    left,
+                    top,
+                    ['--inventory-rotation' as string]: `${angleDeg}deg`,
+                  }}
+                >
+                  <div
+                    className={`grid45InventoryItem${item.active === false ? ' grid45InventoryItemInactive' : ''}`}
+                    title={item.label}
+                  >
+                    {item.iconSrc ? <img className="grid45InventoryIcon" src={item.iconSrc} alt={item.label} /> : <span className="grid45InventoryFallback">{item.label[0]}</span>}
+                    {item.count !== undefined ? <span className="grid45InventoryCount">{item.count}</span> : null}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )
       })}
@@ -323,17 +311,17 @@ function inventoryOrbitGroups(keys: InventoryItem[], boots: InventoryItem[], chi
   return [
     {
       id: 'chips-keys',
-      anchor: 'top-left',
       items: [...chips, ...keys],
-      layout: 'row',
-      rotationDeg: -36,
+      centerAngleDeg: -36,
+      stepDeg: 10,
+      radiusOffset: 66,
     },
     {
       id: 'boots',
-      anchor: 'top-right',
       items: boots,
-      layout: 'row',
-      rotationDeg: 36,
+      centerAngleDeg: 36,
+      stepDeg: 10,
+      radiusOffset: 66,
     },
   ]
 }
