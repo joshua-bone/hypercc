@@ -185,6 +185,69 @@ body {
   color: #f6efde;
 }
 
+.grid45InventoryGroup {
+  margin-top: 10px;
+}
+
+.grid45InventoryTitle {
+  margin-bottom: 6px;
+  color: rgba(241, 234, 216, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid45InventoryItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.grid45InventoryItem {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 10px;
+  background: rgba(12, 17, 23, 0.88);
+}
+
+.grid45InventoryItemInactive {
+  opacity: 0.38;
+}
+
+.grid45InventoryIcon {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+.grid45InventoryFallback {
+  color: #f6efde;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.grid45InventoryCount {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(255, 209, 102, 0.92);
+  color: #11161c;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
 .grid45Toggle {
   display: inline-flex;
   align-items: center;

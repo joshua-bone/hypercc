@@ -103,6 +103,13 @@ type PaintDragState = {
 }
 
 type PaletteIconMap = Partial<Record<EditorPaintTool, string>>
+type InventoryItem = {
+  id: string
+  label: string
+  iconSrc?: string
+  count?: number
+  active?: boolean
+}
 
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'glider' | 'fireball' {
   return tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank' || tool === 'glider' || tool === 'fireball'
@@ -250,15 +257,24 @@ function describeOutcome(snapshot: GameState): string {
   return 'standing by'
 }
 
-function formatKeyInventory(snapshot: GameState): string {
-  return keyColors.map((color) => `${keyLabels[color]} ${snapshot.keyInventory[color]}`).join('  ')
-}
-
-function formatGearInventory(snapshot: GameState): string {
-  const gear: string[] = []
-  if (snapshot.hasFlippers) gear.push('Flippers')
-  if (snapshot.hasFireBoots) gear.push('Fire Boots')
-  return gear.length > 0 ? gear.join(', ') : 'None'
+function InventoryGroup({ title, items }: { title: string; items: InventoryItem[] }) {
+  return (
+    <div className="grid45InventoryGroup">
+      <div className="grid45InventoryTitle">{title}</div>
+      <div className="grid45InventoryItems">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className={`grid45InventoryItem${item.active === false ? ' grid45InventoryItemInactive' : ''}`}
+            title={item.label}
+          >
+            {item.iconSrc ? <img className="grid45InventoryIcon" src={item.iconSrc} alt={item.label} /> : <span className="grid45InventoryFallback">{item.label[0]}</span>}
+            {item.count !== undefined ? <span className="grid45InventoryCount">{item.count}</span> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function describeGate(edge: GameState['world']['areaDag']['edges'][number]): string {
@@ -429,6 +445,71 @@ export default function Grid45App() {
   const teethTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'teeth').length
   const tankTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'tank').length
   const editorMonsterTotal = editorWorld.initialMonsters.length
+  const playInventoryKeys: InventoryItem[] = keyColors.map((color) => ({
+    id: `play-key-${color}`,
+    label: `${keyLabels[color]} key`,
+    iconSrc: paletteIcons[`key-${color}`],
+    count: playSnapshot.keyInventory[color],
+  }))
+  const playInventoryBoots: InventoryItem[] = [
+    {
+      id: 'play-flippers',
+      label: 'Flippers',
+      iconSrc: paletteIcons.flippers,
+      active: playSnapshot.hasFlippers,
+    },
+    {
+      id: 'play-fire-boots',
+      label: 'Fire Boots',
+      iconSrc: paletteIcons['fire-boots'],
+      active: playSnapshot.hasFireBoots,
+    },
+  ]
+  const playInventoryChips: InventoryItem[] = [
+    {
+      id: 'play-chip',
+      label: 'Chips Remaining',
+      iconSrc: paletteIcons.chip,
+      count: chipsRemaining,
+    },
+  ]
+  const playtestInventoryKeys: InventoryItem[] =
+    playtestSnapshot === null
+      ? []
+      : keyColors.map((color) => ({
+          id: `playtest-key-${color}`,
+          label: `${keyLabels[color]} key`,
+          iconSrc: paletteIcons[`key-${color}`],
+          count: playtestSnapshot.keyInventory[color],
+        }))
+  const playtestInventoryBoots: InventoryItem[] =
+    playtestSnapshot === null
+      ? []
+      : [
+          {
+            id: 'playtest-flippers',
+            label: 'Flippers',
+            iconSrc: paletteIcons.flippers,
+            active: playtestSnapshot.hasFlippers,
+          },
+          {
+            id: 'playtest-fire-boots',
+            label: 'Fire Boots',
+            iconSrc: paletteIcons['fire-boots'],
+            active: playtestSnapshot.hasFireBoots,
+          },
+        ]
+  const playtestInventoryChips: InventoryItem[] =
+    playtestSnapshot === null
+      ? []
+      : [
+          {
+            id: 'playtest-chip',
+            label: 'Chips Remaining',
+            iconSrc: paletteIcons.chip,
+            count: playtestSnapshot.remainingChipCellIds.size,
+          },
+        ]
   const editorTotalCells = editorWorld.cells.length
   const playInstructionLine = stepModeEnabled
     ? 'Step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Restart replays this maze; Generate builds a new one.'
@@ -1145,8 +1226,9 @@ export default function Grid45App() {
           <div className="grid45Metrics">Tick {playSnapshot.tick}</div>
           <div className="grid45Metrics">State: {describeOutcome(playSnapshot)}</div>
           <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
-          <div className="grid45Metrics">Keys: {formatKeyInventory(playSnapshot)}</div>
-          <div className="grid45Metrics">Gear: {formatGearInventory(playSnapshot)}</div>
+          <InventoryGroup title="Chips Remaining" items={playInventoryChips} />
+          <InventoryGroup title="Keys" items={playInventoryKeys} />
+          <InventoryGroup title="Boots" items={playInventoryBoots} />
           <div className="grid45Metrics">Ants: {antTotal}</div>
           <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
           <div className="grid45Metrics">Teeth: {teethTotal}</div>
@@ -1299,8 +1381,9 @@ export default function Grid45App() {
               <div className="grid45Metrics">Tick: {playtestSnapshot.tick}</div>
               <div className="grid45Metrics">State: {describeOutcome(playtestSnapshot)}</div>
               <div className="grid45Metrics">Chips: {playtestSnapshot.world.chipCellIds.length - playtestSnapshot.remainingChipCellIds.size} / {playtestSnapshot.world.chipCellIds.length}</div>
-              <div className="grid45Metrics">Keys: {formatKeyInventory(playtestSnapshot)}</div>
-              <div className="grid45Metrics">Gear: {formatGearInventory(playtestSnapshot)}</div>
+              <InventoryGroup title="Chips Remaining" items={playtestInventoryChips} />
+              <InventoryGroup title="Keys" items={playtestInventoryKeys} />
+              <InventoryGroup title="Boots" items={playtestInventoryBoots} />
               <label className="grid45Toggle">
                 <input
                   type="checkbox"
