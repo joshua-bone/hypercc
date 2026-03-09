@@ -7,8 +7,8 @@ import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { createInitialGameState } from '../domain/engine'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
-import { defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
-import { cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
+import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
+import { clearEditorWorld, cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
 import type { Vec2 } from '../../hyper/vec2'
 
 const MIN_MONSTER_COUNT = 0
@@ -322,6 +322,7 @@ export default function Grid45App() {
   const [pinkBallCount, setPinkBallCount] = useState<number>(defaultPinkBallCount)
   const [teethCount, setTeethCount] = useState<number>(defaultTeethCount)
   const [seedInput, setSeedInput] = useState('')
+  const [editorBlankSize, setEditorBlankSize] = useState<WorldSize>(defaultWorldSize)
   const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => cloneMazeWorld(playSession.getSnapshot().world))
   const [editorHistory, setEditorHistory] = useState<EditorHistoryEntry[]>([])
   const [editorCameraCenter, setEditorCameraCenter] = useState<Vec2>(() => playSession.getSnapshot().world.cells[playSession.getSnapshot().world.startCellId].center)
@@ -351,6 +352,7 @@ export default function Grid45App() {
   const pinkBallTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
   const teethTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'teeth').length
   const editorMonsterTotal = editorWorld.initialMonsters.length
+  const editorTotalCells = editorWorld.cells.length
 
   const restoreEditorFrame = (entry: EditorHistoryEntry) => {
     editorCameraCenterRef.current = entry.cameraCenter
@@ -614,6 +616,38 @@ export default function Grid45App() {
     setEditorWorld(normalizedWorld)
     setPlaytestSession(createPlaytestSession(normalizedWorld))
     setPlaytestSnapshot(null)
+  }
+
+  const clearCurrentEditorMap = () => {
+    pushEditorUndo()
+    const clearedWorld = clearEditorWorld(editorWorld, editorSelectedCellId)
+    const clearedCenter = clearedWorld.cells[clearedWorld.startCellId].center
+    editorCameraCenterRef.current = clearedCenter
+    editorCameraAngleRef.current = 0
+    setEditorWorld(clearedWorld)
+    setEditorSelectedCellId(clearedWorld.startCellId)
+    setEditorCameraCenter(clearedCenter)
+    setEditorCameraAngle(0)
+  }
+
+  const createNewBlankEditorMap = () => {
+    pushEditorUndo()
+    const blankSeed = nextSeed()
+    const sourceWorld = createGrid45World({
+      seed: blankSeed,
+      size: editorBlankSize,
+      antCount: 0,
+      pinkBallCount: 0,
+      teethCount: 0,
+    })
+    const clearedWorld = clearEditorWorld(sourceWorld, sourceWorld.startCellId)
+    const clearedCenter = clearedWorld.cells[clearedWorld.startCellId].center
+    editorCameraCenterRef.current = clearedCenter
+    editorCameraAngleRef.current = 0
+    setEditorWorld(clearedWorld)
+    setEditorSelectedCellId(clearedWorld.startCellId)
+    setEditorCameraCenter(clearedCenter)
+    setEditorCameraAngle(0)
   }
 
   const paintSelectedCell = (cellId: number, includeUndo = false) => {
@@ -960,6 +994,7 @@ export default function Grid45App() {
                 Left drag paints. Middle drag pans. Double middle click centers on a tile. Arrow keys move smoothly; Q / E orbit around the hyperbolic center.
               </div>
               <div className="grid45Metrics">Seed: {editorWorld.seed}</div>
+              <div className="grid45Metrics">Total Cells: {editorTotalCells}</div>
               <div className="grid45Metrics">Start Cell: {editorWorld.startCellId}</div>
               <div className="grid45Metrics">Selected Cell: {editorSelectedCellId}</div>
               <div className="grid45Metrics">Monsters: {editorMonsterTotal}</div>
@@ -971,6 +1006,26 @@ export default function Grid45App() {
                 </button>
                 <button className="grid45Button" type="button" onClick={undoEditor} disabled={editorHistory.length === 0}>
                   Undo
+                </button>
+                <button className="grid45Button" type="button" onClick={clearCurrentEditorMap}>
+                  Clear Map
+                </button>
+                <label className="grid45SelectLabel">
+                  <span>Blank Size</span>
+                  <select
+                    className="grid45Select"
+                    value={editorBlankSize}
+                    onChange={(event) => setEditorBlankSize(event.target.value as WorldSize)}
+                  >
+                    {worldSizes.map((size) => (
+                      <option key={size} value={size}>
+                        {worldSizeLabels[size]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button className="grid45Button" type="button" onClick={createNewBlankEditorMap}>
+                  New Blank Map
                 </button>
                 <button className="grid45Button" type="button" onClick={() => downloadWorldJson(editorWorld)}>
                   Download JSON
