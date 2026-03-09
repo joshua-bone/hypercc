@@ -128,20 +128,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
 }
 
 export function clearEditorWorld(world: MazeWorld, startCellId = world.startCellId): MazeWorld {
-  const nextWorld = cloneMazeWorld(world)
-  const safeStartCellId = nextWorld.cells[startCellId] ? startCellId : nextWorld.startCellId
-
-  for (const cell of nextWorld.cells) {
-    cell.kind = 'wall'
-    cell.feature = 'none'
-  }
-
-  nextWorld.startCellId = safeStartCellId
-  nextWorld.cells[safeStartCellId].kind = 'floor'
-  nextWorld.cells[safeStartCellId].feature = 'none'
-  nextWorld.initialMonsters = []
-
-  return normalizeEditorWorld(nextWorld)
+  return createBlankFloorEditorWorld(world, startCellId)
 }
 
 export function createBlankFloorEditorWorld(world: MazeWorld, startCellId = world.startCellId): MazeWorld {
