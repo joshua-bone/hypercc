@@ -1,4 +1,4 @@
-import { mobiusAdd, mobiusNeg } from '../../hyper/poincare'
+import { clampToDisk, mobiusAdd, mobiusNeg } from '../../hyper/poincare'
 import type { Vec2 } from '../../hyper/vec2'
 import type { Direction } from './model'
 
@@ -33,4 +33,13 @@ export function cameraAngleForMove(previousCenter: Vec2, nextCenter: Vec2, moveD
 
 export function toCameraView(point: Vec2, playerCenter: Vec2, cameraAngle: number): Vec2 {
   return rotateViewPoint(toPlayerView(point, playerCenter), cameraAngle)
+}
+
+export function moveCameraInView(cameraCenter: Vec2, cameraAngle: number, viewDelta: Vec2): Vec2 {
+  const worldDelta = rotateViewPoint(viewDelta, -cameraAngle)
+  return clampToDisk(mobiusAdd(cameraCenter, worldDelta))
+}
+
+export function orbitCameraAroundCenter(cameraCenter: Vec2, angleDelta: number): Vec2 {
+  return clampToDisk(rotateViewPoint(cameraCenter, angleDelta))
 }

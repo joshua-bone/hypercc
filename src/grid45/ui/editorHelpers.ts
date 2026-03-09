@@ -1,3 +1,5 @@
+import { hyperbolicDistance } from '../../hyper/poincare'
+import type { Vec2 } from '../../hyper/vec2'
 import type { AreaDag, CellFeature, Direction, MazeWorld, MonsterKind } from '../domain/model'
 
 export type EditorPaintTool = 'floor' | 'wall' | 'start' | CellFeature | MonsterKind
@@ -133,4 +135,19 @@ export function downloadWorldJson(world: MazeWorld): void {
   link.download = `hypercc-${world.seed}.json`
   link.click()
   URL.revokeObjectURL(url)
+}
+
+export function nearestCellIdToPoint(world: MazeWorld, point: Vec2): number {
+  let bestCellId = world.startCellId
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  for (const cell of world.cells) {
+    const distance = hyperbolicDistance(cell.center, point)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      bestCellId = cell.id
+    }
+  }
+
+  return bestCellId
 }

@@ -24,6 +24,7 @@ type ProjectedCell = {
 
 export type Grid45RenderOptions = {
   cameraCellId?: number
+  cameraCenter?: Vec2
   cameraAngle?: number
   highlightCellId?: number | null
   showPlayer?: boolean
@@ -206,14 +207,13 @@ function shapeCenter(shape: ProjectedShape): ScreenPoint {
 function monsterScreenFacing(
   monster: MonsterState,
   state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>,
-  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraAngle'>,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
 ): Direction {
   const monsterCell = state.world.cells[monster.cellId]
   const sideIndex = assignDirectionSides(monsterCell.vertices, monsterCell.center)[monster.facing]
   const sideMidpoint = midpoint(monsterCell.vertices[sideIndex], monsterCell.vertices[(sideIndex + 1) % monsterCell.vertices.length])
-  const cameraCellId = options?.cameraCellId ?? state.playerCellId
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const cameraCenter = state.world.cells[cameraCellId].center
+  const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const monsterView = toCameraView(monsterCell.center, cameraCenter, cameraAngle)
   const facingView = toCameraView(sideMidpoint, cameraCenter, cameraAngle)
   return directionFromViewDelta(facingView.x - monsterView.x, facingView.y - monsterView.y)
@@ -426,7 +426,7 @@ export function resizeCanvasToDisplaySize(
 
 function projectWorldCells(
   world: GameState['world'],
-  viewCellId: number,
+  viewCenter: Vec2,
   cameraAngle: number,
   width: number,
   height: number,
@@ -434,7 +434,6 @@ function projectWorldCells(
   const diskRadius = Math.max(1, Math.min(width, height) * 0.45)
   const centerX = width / 2
   const centerY = height / 2
-  const viewCenter = world.cells[viewCellId].center
   const projectedCells = world.cells.map((cell) => ({
     cell,
     shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
@@ -454,11 +453,11 @@ export function pickGrid45CellAtPoint(
   height: number,
   x: number,
   y: number,
-  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraAngle'>,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
 ): number | null {
-  const cameraCellId = options?.cameraCellId ?? state.playerCellId
+  const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const { projectedCells } = projectWorldCells(state.world, cameraCellId, cameraAngle, width, height)
+  const { projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height)
 
   let bestMatch: { cellId: number; distance: number } | null = null
 
@@ -486,9 +485,9 @@ export function renderGrid45Scene(
   tileset?: Grid45Tileset | null,
   options?: Grid45RenderOptions,
 ): void {
-  const cameraCellId = options?.cameraCellId ?? state.playerCellId
+  const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const { diskRadius, centerX, centerY, projectedCells } = projectWorldCells(state.world, cameraCellId, cameraAngle, width, height)
+  const { diskRadius, centerX, centerY, projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height)
 
   ctx.fillStyle = '#05080c'
   ctx.fillRect(0, 0, width, height)
@@ -527,7 +526,7 @@ export function renderGrid45Scene(
     const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
 
     if (tileset) {
-      const screenFacing = monsterScreenFacing(monster, state, { cameraCellId, cameraAngle })
+      const screenFacing = monsterScreenFacing(monster, state, { cameraCenter, cameraAngle })
       const sprite =
         monster.kind === 'pink-ball' ? tileset.pinkBallSprite :
         monster.kind === 'teeth' ? tileset.teethSprites[screenFacing] :

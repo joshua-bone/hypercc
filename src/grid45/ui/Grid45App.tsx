@@ -4,14 +4,21 @@ import { renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, ty
 import { createIntervalClock } from '../adapters/intervalClock'
 import { attachKeyboardIntent } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
-import { resolveCameraRelativeExits } from '../domain/directions'
+import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { createInitialGameState } from '../domain/engine'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
 import { defaultAntCount, defaultPinkBallCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
-import { cloneMazeWorld, downloadWorldJson, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
+import { cloneMazeWorld, downloadWorldJson, nearestCellIdToPoint, paintEditorWorld, rotateDirection, type EditorPaintTool } from './editorHelpers'
+import type { Vec2 } from '../../hyper/vec2'
 
 const MIN_MONSTER_COUNT = 0
 const MAX_MONSTER_COUNT = 128
+const EDITOR_UNDO_LIMIT = 96
+const EDITOR_MOVE_SPEED = 0.56
+const EDITOR_ORBIT_SPEED = 1.2
+const EDITOR_DRAG_PAN_SCALE = 1.08
+const DOUBLE_MIDDLE_CLICK_MS = 320
+const DOUBLE_MIDDLE_CLICK_DISTANCE = 8
 
 const keyLabels: Record<KeyColor, string> = {
   blue: 'B',
@@ -56,12 +63,78 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'none', label: 'Clear Feature' },
 ]
 
+type EditorHistoryEntry = {
+  world: MazeWorld
+  selectedCellId: number
+  cameraCenter: Vec2
+  cameraAngle: number
+}
+
+type MiddleDragState = {
+  pointerId: number
+  lastX: number
+  lastY: number
+  moved: boolean
+  startX: number
+  startY: number
+}
+
+type PaintDragState = {
+  pointerId: number
+  lastCellId: number | null
+}
+
+type PaletteIconMap = Partial<Record<EditorPaintTool, string>>
+
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' {
   return tool === 'ant' || tool === 'pink-ball' || tool === 'teeth'
 }
 
-function normalizeAngle(angle: number): number {
-  return Math.atan2(Math.sin(angle), Math.cos(angle))
+function makePaletteIcon(sprite?: HTMLCanvasElement | null): string | undefined {
+  return sprite?.toDataURL()
+}
+
+function createClearIcon(): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = 32
+  canvas.height = 32
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+
+  ctx.fillStyle = '#10161d'
+  ctx.fillRect(0, 0, 32, 32)
+  ctx.strokeStyle = '#ff8f8f'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(7, 7)
+  ctx.lineTo(25, 25)
+  ctx.moveTo(25, 7)
+  ctx.lineTo(7, 25)
+  ctx.stroke()
+  return canvas.toDataURL()
+}
+
+function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): PaletteIconMap {
+  return {
+    floor: makePaletteIcon(tileset.tiles.floor),
+    wall: makePaletteIcon(tileset.tiles.wall),
+    start: makePaletteIcon(tileset.playerSprites.north),
+    chip: makePaletteIcon(tileset.features.chip),
+    socket: makePaletteIcon(tileset.features.socket),
+    exit: makePaletteIcon(tileset.features.exit),
+    'key-blue': makePaletteIcon(tileset.features['key-blue']),
+    'key-red': makePaletteIcon(tileset.features['key-red']),
+    'key-green': makePaletteIcon(tileset.features['key-green']),
+    'key-yellow': makePaletteIcon(tileset.features['key-yellow']),
+    'door-blue': makePaletteIcon(tileset.features['door-blue']),
+    'door-red': makePaletteIcon(tileset.features['door-red']),
+    'door-green': makePaletteIcon(tileset.features['door-green']),
+    'door-yellow': makePaletteIcon(tileset.features['door-yellow']),
+    ant: makePaletteIcon(tileset.antSprites[mobFacing]),
+    'pink-ball': makePaletteIcon(tileset.pinkBallSprite),
+    teeth: makePaletteIcon(tileset.teethSprites[mobFacing]),
+    none: createClearIcon(),
+  }
 }
 
 function nextSeed(): number {
@@ -226,11 +299,22 @@ export default function Grid45App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const drawRef = useRef<(() => void) | null>(null)
   const playAgainButtonRef = useRef<HTMLButtonElement | null>(null)
+  const paintDragRef = useRef<PaintDragState | null>(null)
+  const middleDragRef = useRef<MiddleDragState | null>(null)
+  const middleClickRef = useRef<{ time: number; x: number; y: number; cellId: number | null }>({
+    time: 0,
+    x: 0,
+    y: 0,
+    cellId: null,
+  })
+  const editorCameraCenterRef = useRef<Vec2 | null>(null)
+  const editorCameraAngleRef = useRef(0)
   const [playSession] = useState(createSession)
   const [playSnapshot, setPlaySnapshot] = useState<GameState>(() => playSession.getSnapshot())
   const [playtestSession, setPlaytestSession] = useState<Grid45Session | null>(null)
   const [playtestSnapshot, setPlaytestSnapshot] = useState<GameState | null>(null)
   const [tileset, setTileset] = useState<Grid45Tileset | null>(null)
+  const [paletteIcons, setPaletteIcons] = useState<PaletteIconMap>({})
   const [activeTab, setActiveTab] = useState<'play' | 'editor'>('play')
   const [showDagValidator, setShowDagValidator] = useState(false)
   const [worldSize, setWorldSize] = useState<WorldSize>(defaultWorldSize)
@@ -239,7 +323,8 @@ export default function Grid45App() {
   const [teethCount, setTeethCount] = useState<number>(defaultTeethCount)
   const [seedInput, setSeedInput] = useState('')
   const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => cloneMazeWorld(playSession.getSnapshot().world))
-  const [editorCameraCellId, setEditorCameraCellId] = useState<number>(() => playSession.getSnapshot().world.startCellId)
+  const [editorHistory, setEditorHistory] = useState<EditorHistoryEntry[]>([])
+  const [editorCameraCenter, setEditorCameraCenter] = useState<Vec2>(() => playSession.getSnapshot().world.cells[playSession.getSnapshot().world.startCellId].center)
   const [editorCameraAngle, setEditorCameraAngle] = useState(0)
   const [editorSelectedCellId, setEditorSelectedCellId] = useState<number>(() => playSession.getSnapshot().world.startCellId)
   const [editorTool, setEditorTool] = useState<EditorPaintTool>('floor')
@@ -254,7 +339,7 @@ export default function Grid45App() {
   const currentRenderOptions: Grid45RenderOptions | undefined =
     activeTab === 'editor' && playtestSnapshot === null
       ? {
-          cameraCellId: editorCameraCellId,
+          cameraCenter: editorCameraCenter,
           cameraAngle: editorCameraAngle,
           highlightCellId: editorSelectedCellId,
         }
@@ -267,12 +352,53 @@ export default function Grid45App() {
   const teethTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'teeth').length
   const editorMonsterTotal = editorWorld.initialMonsters.length
 
+  const restoreEditorFrame = (entry: EditorHistoryEntry) => {
+    editorCameraCenterRef.current = entry.cameraCenter
+    editorCameraAngleRef.current = entry.cameraAngle
+    setEditorWorld(entry.world)
+    setEditorSelectedCellId(entry.selectedCellId)
+    setEditorCameraCenter(entry.cameraCenter)
+    setEditorCameraAngle(entry.cameraAngle)
+  }
+
+  const pushEditorUndo = () => {
+    setEditorHistory((history) => {
+      const nextHistory = history.concat({
+        world: cloneMazeWorld(editorWorld),
+        selectedCellId: editorSelectedCellId,
+        cameraCenter: editorCameraCenter,
+        cameraAngle: editorCameraAngle,
+      })
+      return nextHistory.slice(-EDITOR_UNDO_LIMIT)
+    })
+  }
+
+  const undoEditor = () => {
+    setEditorHistory((history) => {
+      const previous = history[history.length - 1]
+      if (!previous) return history
+      restoreEditorFrame(previous)
+      return history.slice(0, -1)
+    })
+  }
+
+  const centerEditorOnCell = (cellId: number) => {
+    const center = editorWorld.cells[cellId]?.center
+    if (!center) return
+    editorCameraCenterRef.current = center
+    setEditorSelectedCellId(cellId)
+    setEditorCameraCenter(center)
+  }
+
   useEffect(() => {
     let active = true
 
     loadGrid45Tileset()
       .then((nextTileset) => {
-        if (active) setTileset(nextTileset)
+        if (active) {
+          setTileset(nextTileset)
+          setPaletteIcons(createPaletteIconMap(nextTileset, 'north'))
+        }
       })
       .catch((error) => {
         console.error('Failed to load tileset', error)
@@ -282,6 +408,19 @@ export default function Grid45App() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    editorCameraCenterRef.current = editorCameraCenter
+  }, [editorCameraCenter])
+
+  useEffect(() => {
+    editorCameraAngleRef.current = editorCameraAngle
+  }, [editorCameraAngle])
+
+  useEffect(() => {
+    if (!tileset) return
+    setPaletteIcons(createPaletteIconMap(tileset, editorMobFacing))
+  }, [tileset, editorMobFacing])
 
   useEffect(() => {
     const unsubscribe = playSession.subscribe(setPlaySnapshot)
@@ -346,7 +485,10 @@ export default function Grid45App() {
 
     const detachKeyboard = attachKeyboardIntent(window, setEditorIntent)
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'q' || event.key === 'Q') {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
+        event.preventDefault()
+        undoEditor()
+      } else if (event.key === 'q' || event.key === 'Q') {
         event.preventDefault()
         setEditorRotateIntent(-1)
       } else if (event.key === 'e' || event.key === 'E') {
@@ -369,7 +511,7 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeTab, playSession, playtestSession])
+  }, [activeTab, playSession, playtestSession, undoEditor])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -420,28 +562,46 @@ export default function Grid45App() {
     if (activeTab !== 'editor' || playtestSession) return
     if (editorIntent === 'stay' && editorRotateIntent === 0) return
 
-    const intervalId = window.setInterval(() => {
+    let frameId = 0
+    let previousTime = performance.now()
+
+    const step = (now: number) => {
+      const elapsedSeconds = Math.min(0.05, (now - previousTime) / 1000)
+      previousTime = now
+
+      let nextCenter = editorCameraCenterRef.current ?? editorWorld.cells[editorWorld.startCellId].center
+      let nextAngle = editorCameraAngleRef.current
+
       if (editorIntent !== 'stay') {
-        const nextCellId = resolveCameraRelativeExits({
-          cameraAngle: editorCameraAngle,
-          playerCellId: editorCameraCellId,
-          world: editorWorld,
-        })[editorIntent]
-        if (nextCellId !== null) {
-          setEditorCameraCellId(nextCellId)
-          setEditorSelectedCellId(nextCellId)
+        const distance = EDITOR_MOVE_SPEED * elapsedSeconds
+        if (editorIntent === 'north') {
+          nextCenter = moveCameraInView(nextCenter, nextAngle, { x: 0, y: distance })
+        } else if (editorIntent === 'east') {
+          nextCenter = moveCameraInView(nextCenter, nextAngle, { x: distance, y: 0 })
+        } else if (editorIntent === 'south') {
+          nextCenter = moveCameraInView(nextCenter, nextAngle, { x: 0, y: -distance })
+        } else if (editorIntent === 'west') {
+          nextCenter = moveCameraInView(nextCenter, nextAngle, { x: -distance, y: 0 })
         }
       }
 
       if (editorRotateIntent !== 0) {
-        setEditorCameraAngle((angle) => normalizeAngle(angle + editorRotateIntent * 0.085))
+        nextCenter = orbitCameraAroundCenter(nextCenter, editorRotateIntent * EDITOR_ORBIT_SPEED * elapsedSeconds)
       }
-    }, 48)
 
-    return () => {
-      window.clearInterval(intervalId)
+      editorCameraCenterRef.current = nextCenter
+      editorCameraAngleRef.current = nextAngle
+      setEditorCameraCenter(nextCenter)
+      setEditorCameraAngle(nextAngle)
+      setEditorSelectedCellId(nearestCellIdToPoint(editorWorld, nextCenter))
+      frameId = window.requestAnimationFrame(step)
     }
-  }, [activeTab, playtestSession, editorIntent, editorRotateIntent, editorCameraAngle, editorCameraCellId, editorWorld])
+
+    frameId = window.requestAnimationFrame(step)
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [activeTab, playtestSession, editorIntent, editorRotateIntent, editorWorld])
 
   const generateNewMap = () => {
     playSession.reset(worldSize, antCount, pinkBallCount, teethCount, parseSeedInput(seedInput))
@@ -456,15 +616,37 @@ export default function Grid45App() {
     setPlaytestSnapshot(null)
   }
 
-  const paintSelectedCell = (cellId: number) => {
+  const paintSelectedCell = (cellId: number, includeUndo = false) => {
+    if (includeUndo) pushEditorUndo()
     setEditorSelectedCellId(cellId)
     setEditorWorld((world) => paintEditorWorld(world, cellId, editorTool, editorMobFacing))
-    if (editorTool === 'start') setEditorCameraCellId(cellId)
+    if (editorTool === 'start') {
+      const center = editorWorld.cells[cellId]?.center
+      if (center) {
+        editorCameraCenterRef.current = center
+        setEditorCameraCenter(center)
+      }
+    }
+  }
+
+  const updateEditorCameraFromDrag = (deltaX: number, deltaY: number, rect: DOMRect) => {
+    const diskRadius = Math.max(1, Math.min(rect.width, rect.height) * 0.45)
+    const nextCenter = moveCameraInView(
+      editorCameraCenterRef.current ?? editorCameraCenter,
+      editorCameraAngleRef.current,
+      {
+        x: (-deltaX / diskRadius) * EDITOR_DRAG_PAN_SCALE,
+        y: (deltaY / diskRadius) * EDITOR_DRAG_PAN_SCALE,
+      },
+    )
+
+    editorCameraCenterRef.current = nextCenter
+    setEditorCameraCenter(nextCenter)
+    setEditorSelectedCellId(nearestCellIdToPoint(editorWorld, nextCenter))
   }
 
   const handleEditorPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (activeTab !== 'editor' || playtestSession) return
-    if (event.type === 'pointermove' && event.buttons !== 1) return
 
     const canvas = canvasRef.current
     if (!canvas) return
@@ -477,13 +659,95 @@ export default function Grid45App() {
       event.clientX - rect.left,
       event.clientY - rect.top,
       {
-        cameraCellId: editorCameraCellId,
+        cameraCenter: editorCameraCenterRef.current ?? editorCameraCenter,
         cameraAngle: editorCameraAngle,
       },
     )
 
-    if (cellId === null) return
-    paintSelectedCell(cellId)
+    if (event.type === 'pointerdown') {
+      if (event.button === 0) {
+        event.preventDefault()
+        canvas.setPointerCapture(event.pointerId)
+        paintDragRef.current = {
+          pointerId: event.pointerId,
+          lastCellId: cellId,
+        }
+        if (cellId !== null) paintSelectedCell(cellId, true)
+        return
+      }
+
+      if (event.button === 1) {
+        event.preventDefault()
+        canvas.setPointerCapture(event.pointerId)
+        middleDragRef.current = {
+          pointerId: event.pointerId,
+          lastX: event.clientX,
+          lastY: event.clientY,
+          moved: false,
+          startX: event.clientX,
+          startY: event.clientY,
+        }
+      }
+      return
+    }
+
+    if (event.type === 'pointermove') {
+      const paintDrag = paintDragRef.current
+      if (paintDrag && paintDrag.pointerId === event.pointerId && (event.buttons & 1) === 1) {
+        if (cellId !== null && cellId !== paintDrag.lastCellId) {
+          paintDrag.lastCellId = cellId
+          paintSelectedCell(cellId)
+        }
+      }
+
+      const middleDrag = middleDragRef.current
+      if (middleDrag && middleDrag.pointerId === event.pointerId && (event.buttons & 4) === 4) {
+        const dx = event.clientX - middleDrag.lastX
+        const dy = event.clientY - middleDrag.lastY
+        middleDrag.lastX = event.clientX
+        middleDrag.lastY = event.clientY
+        if (Math.abs(event.clientX - middleDrag.startX) > 2 || Math.abs(event.clientY - middleDrag.startY) > 2) {
+          middleDrag.moved = true
+        }
+        updateEditorCameraFromDrag(dx, dy, rect)
+      }
+      return
+    }
+
+    if (event.type === 'pointerup' || event.type === 'pointercancel') {
+      const paintDrag = paintDragRef.current
+      if (paintDrag && paintDrag.pointerId === event.pointerId) {
+        paintDragRef.current = null
+      }
+
+      const middleDrag = middleDragRef.current
+      if (middleDrag && middleDrag.pointerId === event.pointerId) {
+        if (!middleDrag.moved && cellId !== null) {
+          const now = performance.now()
+          const previous = middleClickRef.current
+          if (
+            previous.cellId === cellId &&
+            now - previous.time <= DOUBLE_MIDDLE_CLICK_MS &&
+            Math.hypot(previous.x - event.clientX, previous.y - event.clientY) <= DOUBLE_MIDDLE_CLICK_DISTANCE
+          ) {
+            centerEditorOnCell(cellId)
+            middleClickRef.current = { time: 0, x: 0, y: 0, cellId: null }
+          } else {
+            middleClickRef.current = {
+              time: now,
+              x: event.clientX,
+              y: event.clientY,
+              cellId,
+            }
+          }
+        }
+        middleDragRef.current = null
+      }
+
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId)
+      }
+    }
   }
 
   return (
@@ -513,6 +777,14 @@ export default function Grid45App() {
         className="grid45Canvas"
         onPointerDown={handleEditorPointer}
         onPointerMove={handleEditorPointer}
+        onPointerUp={handleEditorPointer}
+        onPointerCancel={handleEditorPointer}
+        onAuxClick={(event) => {
+          if (activeTab === 'editor') event.preventDefault()
+        }}
+        onContextMenu={(event) => {
+          if (activeTab === 'editor') event.preventDefault()
+        }}
       />
       {showPlayEndOverlay ? (
         <div className={`grid45EndOverlay${playSnapshot.playerDead ? ' grid45EndOverlayLose' : ''}`}>
@@ -685,16 +957,20 @@ export default function Grid45App() {
           ) : (
             <>
               <div className="grid45Line">
-                Click or drag to paint. Arrow keys move the editor camera. Q / E rotate the world. ESC exits playtest.
+                Left drag paints. Middle drag pans. Double middle click centers on a tile. Arrow keys move smoothly; Q / E orbit around the hyperbolic center.
               </div>
               <div className="grid45Metrics">Seed: {editorWorld.seed}</div>
               <div className="grid45Metrics">Start Cell: {editorWorld.startCellId}</div>
               <div className="grid45Metrics">Selected Cell: {editorSelectedCellId}</div>
               <div className="grid45Metrics">Monsters: {editorMonsterTotal}</div>
+              <div className="grid45Metrics">Undo: {editorHistory.length}</div>
               <div className="grid45Metrics">Mode: Edit</div>
               <div className="grid45Controls">
                 <button className="grid45Button grid45ButtonPrimary" type="button" onClick={startEditorPlaytest}>
                   Playtest
+                </button>
+                <button className="grid45Button" type="button" onClick={undoEditor} disabled={editorHistory.length === 0}>
+                  Undo
                 </button>
                 <button className="grid45Button" type="button" onClick={() => downloadWorldJson(editorWorld)}>
                   Download JSON
@@ -704,8 +980,11 @@ export default function Grid45App() {
                   type="button"
                   onClick={() => {
                     const nextWorld = cloneMazeWorld(playSnapshot.world)
+                    setEditorHistory([])
+                    editorCameraCenterRef.current = nextWorld.cells[nextWorld.startCellId].center
+                    editorCameraAngleRef.current = 0
                     setEditorWorld(nextWorld)
-                    setEditorCameraCellId(nextWorld.startCellId)
+                    setEditorCameraCenter(nextWorld.cells[nextWorld.startCellId].center)
                     setEditorSelectedCellId(nextWorld.startCellId)
                     setEditorCameraAngle(0)
                   }}
@@ -721,7 +1000,8 @@ export default function Grid45App() {
                     type="button"
                     onClick={() => setEditorTool(item.tool)}
                   >
-                    {item.label}
+                    {paletteIcons[item.tool] ? <img className="grid45PaletteIcon" src={paletteIcons[item.tool]} alt="" /> : null}
+                    <span>{item.label}</span>
                   </button>
                 ))}
               </div>
@@ -729,6 +1009,7 @@ export default function Grid45App() {
           )}
           {!playtestSnapshot && isMobTool(editorTool) ? (
             <div className="grid45Controls">
+              {paletteIcons[editorTool] ? <img className="grid45FacingPreview" src={paletteIcons[editorTool]} alt="" /> : null}
               <div className="grid45Metrics">Mob Facing: {editorMobFacing}</div>
               <button className="grid45Button grid45StepButton" type="button" onClick={() => setEditorMobFacing((direction) => rotateDirection(direction, -1))}>
                 ↺
