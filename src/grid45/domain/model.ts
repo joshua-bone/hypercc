@@ -2,7 +2,7 @@ import type { Vec2 } from '../../hyper/vec2'
 
 export type Direction = 'north' | 'east' | 'south' | 'west'
 export type MoveIntent = Direction | 'stay'
-export type CellKind = 'floor' | 'wall' | 'toggle-floor' | 'toggle-wall'
+export type CellKind = 'floor' | 'wall' | 'toggle-floor' | 'toggle-wall' | 'water' | 'fire' | 'dirt' | 'gravel'
 export const keyColors = ['blue', 'red', 'green', 'yellow'] as const
 export type KeyColor = (typeof keyColors)[number]
 export type CellFeature =
@@ -99,6 +99,7 @@ export type GameState = {
   collectedKeyCellIds: Set<number>
   openedDoorCellIds: Set<number>
   removedBombCellIds: Set<number>
+  terrainOverrides: Map<number, CellKind>
   keyInventory: KeyInventory
   socketCleared: boolean
   togglePhase: boolean
@@ -146,13 +147,14 @@ export function doorColorFromFeature(feature: CellFeature): KeyColor | null {
   return null
 }
 
-export function currentCellKind(kind: CellKind, togglePhase: boolean): CellKind {
+export function currentCellKind(kind: CellKind, togglePhase: boolean, terrainOverride?: CellKind): CellKind {
+  if (terrainOverride !== undefined) return terrainOverride
   if (kind === 'toggle-floor') return togglePhase ? 'toggle-wall' : 'toggle-floor'
   if (kind === 'toggle-wall') return togglePhase ? 'toggle-floor' : 'toggle-wall'
   return kind
 }
 
-export function isPassableCellKind(kind: CellKind, togglePhase: boolean): boolean {
-  const effectiveKind = currentCellKind(kind, togglePhase)
+export function isPassableCellKind(kind: CellKind, togglePhase: boolean, terrainOverride?: CellKind): boolean {
+  const effectiveKind = currentCellKind(kind, togglePhase, terrainOverride)
   return effectiveKind === 'floor' || effectiveKind === 'toggle-floor'
 }

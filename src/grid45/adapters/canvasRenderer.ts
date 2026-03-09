@@ -341,7 +341,12 @@ function fillCell(
 }
 
 function baseFillForCell(kind: MazeCell['kind']): string {
-  return kind === 'floor' || kind === 'toggle-floor' ? '#bebebe' : '#9c9c9c'
+  if (kind === 'floor' || kind === 'toggle-floor') return '#bebebe'
+  if (kind === 'water') return '#5d91c5'
+  if (kind === 'fire') return '#cb7650'
+  if (kind === 'dirt') return '#8f6c4a'
+  if (kind === 'gravel') return '#969389'
+  return '#9c9c9c'
 }
 
 function featureIsVisible(
@@ -624,8 +629,24 @@ export function renderGrid45Scene(
   ctx.fillRect(centerX - diskRadius, centerY - diskRadius, diskRadius * 2, diskRadius * 2)
 
   for (const projected of projectedCells) {
-    const effectiveKind = currentCellKind(projected.cell.kind, state.togglePhase)
-    fillCell(ctx, projected.shape.outline, tileset ? baseFillForCell(effectiveKind) : effectiveKind === 'floor' || effectiveKind === 'toggle-floor' ? '#d3d7de' : '#363d46')
+    const effectiveKind = currentCellKind(projected.cell.kind, state.togglePhase, state.terrainOverrides.get(projected.cell.id))
+    fillCell(
+      ctx,
+      projected.shape.outline,
+      tileset
+        ? baseFillForCell(effectiveKind)
+        : effectiveKind === 'floor' || effectiveKind === 'toggle-floor'
+          ? '#d3d7de'
+          : effectiveKind === 'water'
+            ? '#6d9bcb'
+            : effectiveKind === 'fire'
+              ? '#c76f50'
+              : effectiveKind === 'dirt'
+                ? '#8b6948'
+                : effectiveKind === 'gravel'
+                  ? '#9e9991'
+                  : '#363d46',
+    )
     if (tileset) drawCellSprite(ctx, projected.shape, tileset.tiles[effectiveKind])
     const featureSprite = tileset ? featureSpriteForCell(projected.cell, state, tileset) : null
     if (featureSprite) drawCellSprite(ctx, projected.shape, featureSprite)

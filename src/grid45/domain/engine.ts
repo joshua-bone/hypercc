@@ -3,12 +3,14 @@ import { cameraAngleForMove } from './camera'
 import { directions, resolveCameraRelativeExits } from './directions'
 import {
   createEmptyKeyInventory,
+  currentCellKind,
   doorColorFromFeature,
-  isPassableCellKind,
   keyColorFromFeature,
+  type CellKind,
   type Direction,
   type DirectionMap,
   type GameState,
+  type MonsterKind,
   type MazeWorld,
   type MonsterState,
   type MoveIntent,
@@ -45,7 +47,7 @@ const oppositeDirection: DirectionMap<Direction> = {
 
 type MonsterTraversalState = Pick<
   GameState,
-  'world' | 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared' | 'togglePhase'
+  'world' | 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'terrainOverrides' | 'socketCleared' | 'togglePhase'
 >
 
 type MonsterAdvanceResult = {
@@ -76,6 +78,7 @@ export function createInitialGameState(world: MazeWorld): GameState {
     collectedKeyCellIds: new Set<number>(),
     openedDoorCellIds: new Set<number>(),
     removedBombCellIds: new Set<number>(),
+    terrainOverrides: new Map<number, CellKind>(),
     keyInventory: createEmptyKeyInventory(),
     socketCleared: false,
     togglePhase: false,
@@ -96,9 +99,33 @@ function removeBombCell(removedBombCellIds: Set<number>, cellId: number): Set<nu
   return nextRemovedBombCellIds
 }
 
+function overrideTerrainKind(terrainOverrides: Map<number, CellKind>, cellId: number, kind: CellKind): Map<number, CellKind> {
+  if (terrainOverrides.get(cellId) === kind) return terrainOverrides
+  const nextTerrainOverrides = new Map(terrainOverrides)
+  nextTerrainOverrides.set(cellId, kind)
+  return nextTerrainOverrides
+}
+
+function resolvedCellKind(state: Pick<GameState, 'world' | 'togglePhase' | 'terrainOverrides'> | Pick<MonsterTraversalState, 'world' | 'togglePhase' | 'terrainOverrides'>, cellId: number): CellKind {
+  const cell = state.world.cells[cellId]
+  return currentCellKind(cell.kind, state.togglePhase, state.terrainOverrides.get(cellId))
+}
+
+function canPlayerEnterTerrain(kind: CellKind): boolean {
+  return kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'dirt' || kind === 'gravel'
+}
+
+function canMonsterEnterTerrain(kind: CellKind, monsterKind: MonsterKind): boolean {
+  if (kind === 'floor' || kind === 'toggle-floor') return true
+  if (kind === 'water') return monsterKind !== 'dirt-block'
+  if (kind === 'fire') return monsterKind === 'fireball'
+  if (kind === 'gravel') return monsterKind === 'dirt-block'
+  return false
+}
+
 function canEnterCell(state: GameState, targetId: number): boolean {
   const cell = state.world.cells[targetId]
-  if (!isPassableCellKind(cell.kind, state.togglePhase)) return false
+  if (!canPlayerEnterTerrain(resolvedCellKind(state, targetId))) return false
   const doorColor = doorColorFromFeature(cell.feature)
   if (doorColor !== null && !state.openedDoorCellIds.has(targetId) && state.keyInventory[doorColor] < 1) return false
   if (cell.feature === 'socket' && !state.socketCleared && state.remainingChipCellIds.size > 0) return false
@@ -107,6 +134,7 @@ function canEnterCell(state: GameState, targetId: number): boolean {
 
 function monsterCanEnterCell(
   state: MonsterTraversalState,
+  monsterKind: MonsterKind,
   targetId: number,
   playerCellId: number,
   occupiedCellIds: Set<number>,
@@ -115,7 +143,7 @@ function monsterCanEnterCell(
   if (occupiedCellIds.has(targetId)) return false
 
   const cell = state.world.cells[targetId]
-  if (!isPassableCellKind(cell.kind, state.togglePhase)) return false
+  if (!canMonsterEnterTerrain(resolvedCellKind(state, targetId), monsterKind)) return false
 
   const doorColor = doorColorFromFeature(cell.feature)
   if (doorColor !== null) return state.openedDoorCellIds.has(targetId)
@@ -136,7 +164,8 @@ function dirtBlockCanEnterCell(
   if (occupiedCellIds.has(targetId)) return false
 
   const cell = state.world.cells[targetId]
-  if (!isPassableCellKind(cell.kind, state.togglePhase)) return false
+  const kind = resolvedCellKind(state, targetId)
+  if (!(kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'gravel')) return false
   if (cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || isBombActive(state, targetId)) return true
 
   const keyColor = keyColorFromFeature(cell.feature)
@@ -284,6 +313,7 @@ function advanceMonsters(
   const nextMonsters: MonsterState[] = []
   const occupiedCellIds = new Set(monsters.map((monster) => monster.cellId))
   let removedBombCellIds = state.removedBombCellIds
+  const terrainOverrides = state.terrainOverrides
   let togglePhase = state.togglePhase
   let tankDirectionsReversed = false
 
@@ -321,8 +351,10 @@ function advanceMonsters(
           {
             ...state,
             removedBombCellIds,
+            terrainOverrides,
             togglePhase,
           },
+          activeMonster.kind,
           targetId,
           playerCellId,
           occupiedCellIds,
@@ -331,7 +363,7 @@ function advanceMonsters(
         continue
       }
 
-      const nextMonster = {
+  const nextMonster = {
         ...activeMonster,
         cellId: targetId,
         facing: nextFacingFromMove(state.world, monster.cellId, targetId, direction),
@@ -354,8 +386,14 @@ function advanceMonsters(
       }
 
       const enteredCell = state.world.cells[targetId]
+      const enteredKind = resolvedCellKind({ world: state.world, terrainOverrides, togglePhase }, targetId)
       if (isBombActive({ world: state.world, removedBombCellIds }, targetId)) {
         removedBombCellIds = removeBombCell(removedBombCellIds, targetId)
+        moved = true
+        break
+      }
+
+      if (enteredKind === 'water' && activeMonster.kind !== 'glider') {
         moved = true
         break
       }
@@ -401,6 +439,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   let collectedKeyCellIds = state.collectedKeyCellIds
   let openedDoorCellIds = state.openedDoorCellIds
   let removedBombCellIds = state.removedBombCellIds
+  let terrainOverrides = state.terrainOverrides
   let keyInventory = state.keyInventory
   let socketCleared = state.socketCleared
   let togglePhase = state.togglePhase
@@ -441,11 +480,16 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           monsters.filter((monster, index) => index !== blockingMonsterIndex).map((monster) => monster.cellId),
         )
 
-        if (pushTargetId === null || !dirtBlockCanEnterCell({ ...state, removedBombCellIds, togglePhase }, pushTargetId, occupiedByOtherMonsters)) {
+        if (pushTargetId === null || !dirtBlockCanEnterCell({ ...state, removedBombCellIds, terrainOverrides, togglePhase }, pushTargetId, occupiedByOtherMonsters)) {
           playerFacing = intent
           lastOutcome = 'blocked'
         } else {
-          if (isBombActive({ world: state.world, removedBombCellIds }, pushTargetId)) {
+          const pushedTerrain = resolvedCellKind({ world: state.world, terrainOverrides, togglePhase }, pushTargetId)
+
+          if (pushedTerrain === 'water') {
+            terrainOverrides = overrideTerrainKind(terrainOverrides, pushTargetId, 'dirt')
+            monsters = monsters.filter((_, index) => index !== blockingMonsterIndex)
+          } else if (isBombActive({ world: state.world, removedBombCellIds }, pushTargetId)) {
             removedBombCellIds = removeBombCell(removedBombCellIds, pushTargetId)
             monsters = monsters.filter((_, index) => index !== blockingMonsterIndex)
           } else {
@@ -471,6 +515,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           playerFacing = intent
           cameraAngle = cameraAngleForMove(state.world.cells[playerCellId].center, targetCell.center, intent)
           playerCellId = targetId
+          const enteredTerrain = resolvedCellKind({ world: state.world, terrainOverrides, togglePhase }, targetId)
 
           if (state.remainingChipCellIds.has(targetId)) {
             remainingChipCellIds = new Set(state.remainingChipCellIds)
@@ -495,7 +540,14 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           if (targetCell.feature === 'tank-button') {
             monsters = reverseTankMonsters(monsters)
           }
-          if (isBombActive({ world: state.world, removedBombCellIds }, targetId)) {
+          if (enteredTerrain === 'dirt') {
+            terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
+          }
+          if (enteredTerrain === 'water') {
+            playerDead = true
+            recoveryTicks = 0
+            lastOutcome = 'dead'
+          } else if (isBombActive({ world: state.world, removedBombCellIds }, targetId)) {
             removedBombCellIds = removeBombCell(removedBombCellIds, targetId)
             playerDead = true
             recoveryTicks = 0
@@ -522,6 +574,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
       playerFacing = intent
       cameraAngle = cameraAngleForMove(state.world.cells[playerCellId].center, targetCell.center, intent)
       playerCellId = targetId
+      const enteredTerrain = resolvedCellKind({ world: state.world, terrainOverrides, togglePhase }, targetId)
 
       const collidedWithMonster = blockingMonster !== null
       if (collidedWithMonster) {
@@ -552,7 +605,14 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         if (targetCell.feature === 'tank-button') {
           monsters = reverseTankMonsters(monsters)
         }
-        if (isBombActive({ world: state.world, removedBombCellIds }, targetId)) {
+        if (enteredTerrain === 'dirt') {
+          terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
+        }
+        if (enteredTerrain === 'water') {
+          playerDead = true
+          recoveryTicks = 0
+          lastOutcome = 'dead'
+        } else if (isBombActive({ world: state.world, removedBombCellIds }, targetId)) {
           removedBombCellIds = removeBombCell(removedBombCellIds, targetId)
           playerDead = true
           recoveryTicks = 0
@@ -578,6 +638,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         collectedKeyCellIds,
         openedDoorCellIds,
         removedBombCellIds,
+        terrainOverrides,
         socketCleared,
         togglePhase,
       },
@@ -608,6 +669,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
     collectedKeyCellIds,
     openedDoorCellIds,
     removedBombCellIds,
+    terrainOverrides,
     keyInventory,
     socketCleared,
     togglePhase,

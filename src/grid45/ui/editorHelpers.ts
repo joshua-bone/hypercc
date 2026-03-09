@@ -1,6 +1,6 @@
 import { hyperbolicDistance } from '../../hyper/poincare'
 import type { Vec2 } from '../../hyper/vec2'
-import { isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeWorld, type MonsterKind } from '../domain/model'
+import { currentCellKind, isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeWorld, type MonsterKind } from '../domain/model'
 
 export type EditorPaintTool = CellKind | 'start' | CellFeature | MonsterKind
 
@@ -19,7 +19,10 @@ function nextMonsterId(world: MazeWorld): number {
 }
 
 function firstFloorCellId(world: MazeWorld): number {
-  return world.cells.find((cell) => isPassableCellKind(cell.kind, false))?.id ?? 0
+  return world.cells.find((cell) => {
+    const kind = currentCellKind(cell.kind, false)
+    return kind === 'floor' || kind === 'toggle-floor' || kind === 'dirt' || kind === 'gravel'
+  })?.id ?? 0
 }
 
 function hasMonsterAtCell(world: MazeWorld, cellId: number): boolean {
@@ -40,7 +43,7 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   const nextWorld = cloneMazeWorld(world)
 
   for (const cell of nextWorld.cells) {
-    if (cell.kind === 'wall' || cell.kind === 'toggle-wall') {
+    if (!isPassableCellKind(cell.kind, false)) {
       cell.feature = 'none'
     }
   }
@@ -58,7 +61,14 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   nextWorld.initialMonsters = nextWorld.initialMonsters
     .filter((monster) => {
       const cell = nextWorld.cells[monster.cellId]
-      return isPassableCellKind(cell.kind, false) && cell.feature === 'none'
+      const kind = currentCellKind(cell.kind, false)
+      const canOccupy =
+        kind === 'floor' ||
+        kind === 'toggle-floor' ||
+        (monster.kind === 'glider' && kind === 'water') ||
+        (monster.kind === 'fireball' && kind === 'fire') ||
+        (monster.kind === 'dirt-block' && kind === 'gravel')
+      return canOccupy && cell.feature === 'none'
     })
     .map((monster, index) => ({
       ...monster,
@@ -66,7 +76,9 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
       recoveryTicks: 0,
     }))
 
-  if (!isPassableCellKind(nextWorld.cells[nextWorld.startCellId]?.kind ?? 'wall', false) || hasMonsterAtCell(nextWorld, nextWorld.startCellId)) {
+  const startKind = currentCellKind(nextWorld.cells[nextWorld.startCellId]?.kind ?? 'wall', false)
+  const startPassable = startKind === 'floor' || startKind === 'toggle-floor' || startKind === 'dirt' || startKind === 'gravel'
+  if (!startPassable || hasMonsterAtCell(nextWorld, nextWorld.startCellId)) {
     nextWorld.startCellId = firstFloorCellId(nextWorld)
   }
 
@@ -91,7 +103,14 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
     return normalizeEditorWorld(nextWorld)
   }
 
-  if (tool === 'wall' || tool === 'toggle-wall') {
+  if (
+    tool === 'wall' ||
+    tool === 'toggle-wall' ||
+    tool === 'water' ||
+    tool === 'fire' ||
+    tool === 'dirt' ||
+    tool === 'gravel'
+  ) {
     cell.kind = tool
     cell.feature = 'none'
     return normalizeEditorWorld(nextWorld)
@@ -109,7 +128,14 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
   }
 
   if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank' || tool === 'dirt-block' || tool === 'glider' || tool === 'fireball') {
-    cell.kind = 'floor'
+    const existingKind = currentCellKind(cell.kind, false)
+    const canPreserveKind =
+      existingKind === 'floor' ||
+      existingKind === 'toggle-floor' ||
+      (tool === 'glider' && existingKind === 'water') ||
+      (tool === 'fireball' && existingKind === 'fire') ||
+      (tool === 'dirt-block' && existingKind === 'gravel')
+    cell.kind = canPreserveKind ? cell.kind : 'floor'
     cell.feature = 'none'
     nextWorld.initialMonsters.push({
       id: nextMonsterId(nextWorld),

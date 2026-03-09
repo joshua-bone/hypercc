@@ -132,6 +132,10 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       wall: drawTile(image, { col: 1, row: 2 }),
       'toggle-floor': drawTile(image, { col: 3, row: 7 }),
       'toggle-wall': drawTile(image, { col: 3, row: 6 }),
+      water: drawTile(image, { col: 1, row: 4 }),
+      fire: drawTile(image, { col: 1, row: 5 }),
+      dirt: drawTile(image, { col: 1, row: 12 }),
+      gravel: drawTile(image, { col: 3, row: 14 }),
     },
     features: {
       bomb: drawTile(image, { col: 3, row: 11 }),
