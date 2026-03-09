@@ -108,7 +108,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
     return normalizeEditorWorld(nextWorld)
   }
 
-  if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank' || tool === 'dirt-block') {
+  if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank' || tool === 'dirt-block' || tool === 'glider' || tool === 'fireball') {
     cell.kind = 'floor'
     cell.feature = 'none'
     nextWorld.initialMonsters.push({

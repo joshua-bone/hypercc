@@ -16,9 +16,11 @@ export type Grid45Tileset = {
   doors: Record<KeyColor, HTMLCanvasElement>
   playerSprites: Record<Direction, HTMLCanvasElement>
   antSprites: Record<Direction, HTMLCanvasElement>
+  gliderSprites: Record<Direction, HTMLCanvasElement>
   teethSprites: Record<Direction, HTMLCanvasElement>
   tankSprites: Record<Direction, HTMLCanvasElement>
   dirtBlockSprite: HTMLCanvasElement
+  fireballSprite: HTMLCanvasElement
   pinkBallSprite: HTMLCanvasElement
 }
 
@@ -62,6 +64,13 @@ const tankTileRows: Record<Direction, number> = {
   west: 14,
   south: 15,
   east: 16,
+}
+
+const gliderTileRows: Record<Direction, number> = {
+  north: 1,
+  west: 2,
+  south: 3,
+  east: 4,
 }
 
 function createCanvas(width: number, height: number): HTMLCanvasElement {
@@ -164,6 +173,12 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       south: applyMask(drawTile(image, { col: 8, row: antTileRows.south }), drawTile(image, { col: 11, row: antTileRows.south })),
       west: applyMask(drawTile(image, { col: 8, row: antTileRows.east }), drawTile(image, { col: 11, row: antTileRows.east })),
     },
+    gliderSprites: {
+      north: applyMask(drawTile(image, { col: 9, row: gliderTileRows.north }), drawTile(image, { col: 12, row: gliderTileRows.north })),
+      east: applyMask(drawTile(image, { col: 9, row: gliderTileRows.east }), drawTile(image, { col: 12, row: gliderTileRows.east })),
+      south: applyMask(drawTile(image, { col: 9, row: gliderTileRows.south }), drawTile(image, { col: 12, row: gliderTileRows.south })),
+      west: applyMask(drawTile(image, { col: 9, row: gliderTileRows.west }), drawTile(image, { col: 12, row: gliderTileRows.west })),
+    },
     teethSprites: {
       north: applyMask(drawTile(image, { col: 9, row: teethTileRows.north }), drawTile(image, { col: 12, row: teethTileRows.north })),
       east: applyMask(drawTile(image, { col: 9, row: teethTileRows.east }), drawTile(image, { col: 12, row: teethTileRows.east })),
@@ -177,6 +192,7 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       west: applyMask(drawTile(image, { col: 8, row: tankTileRows.west }), drawTile(image, { col: 11, row: tankTileRows.west })),
     },
     dirtBlockSprite: drawTile(image, { col: 2, row: 1 }),
+    fireballSprite: applyMask(drawTile(image, { col: 8, row: 5 }), drawTile(image, { col: 11, row: 5 })),
     pinkBallSprite: applyMask(drawTile(image, { col: 8, row: 9 }), drawTile(image, { col: 11, row: 9 })),
   }
 }

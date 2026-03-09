@@ -22,6 +22,20 @@ const antTurnPriority: Record<Direction, Direction[]> = {
   west: ['south', 'west', 'north', 'east'],
 }
 
+const gliderTurnPriority: Record<Direction, Direction[]> = {
+  north: ['north', 'west', 'east', 'south'],
+  east: ['east', 'north', 'south', 'west'],
+  south: ['south', 'east', 'west', 'north'],
+  west: ['west', 'south', 'north', 'east'],
+}
+
+const fireballTurnPriority: Record<Direction, Direction[]> = {
+  north: ['north', 'east', 'west', 'south'],
+  east: ['east', 'south', 'north', 'west'],
+  south: ['south', 'west', 'east', 'north'],
+  west: ['west', 'north', 'south', 'east'],
+}
+
 const oppositeDirection: DirectionMap<Direction> = {
   north: 'south',
   east: 'west',
@@ -227,6 +241,20 @@ function movePlanForMonster(
     return {
       facing: monster.facing,
       directions: [monster.facing],
+    }
+  }
+
+  if (monster.kind === 'glider') {
+    return {
+      facing: monster.facing,
+      directions: gliderTurnPriority[monster.facing],
+    }
+  }
+
+  if (monster.kind === 'fireball') {
+    return {
+      facing: monster.facing,
+      directions: fireballTurnPriority[monster.facing],
     }
   }
 

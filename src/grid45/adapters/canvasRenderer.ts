@@ -244,7 +244,7 @@ function monsterSpriteRotation(
   state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>,
   options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
 ): number {
-  if (monster.kind === 'dirt-block') return 0
+  if (monster.kind === 'dirt-block' || monster.kind === 'fireball') return 0
   const facingVector = monsterFacingVector(monster, state, options)
   const actualAngle = Math.atan2(facingVector.x, facingVector.y)
   return actualAngle - directionBaseAngle(monster.facing)
@@ -252,7 +252,9 @@ function monsterSpriteRotation(
 
 function monsterBaseSprite(monster: MonsterState, tileset: Grid45Tileset): CanvasImageSource {
   if (monster.kind === 'dirt-block') return tileset.dirtBlockSprite
+  if (monster.kind === 'fireball') return tileset.fireballSprite
   if (monster.kind === 'pink-ball') return tileset.pinkBallSprite
+  if (monster.kind === 'glider') return tileset.gliderSprites[monster.facing]
   if (monster.kind === 'teeth') return tileset.teethSprites[monster.facing]
   if (monster.kind === 'tank') return tileset.tankSprites[monster.facing]
   return tileset.antSprites[monster.facing]
@@ -660,12 +662,20 @@ export function renderGrid45Scene(
       ctx.rotate(rotation)
       ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
       ctx.restore()
-      if (monster.kind === 'pink-ball') {
+      if (monster.kind === 'pink-ball' || monster.kind === 'fireball') {
         drawPinkBallArrow(ctx, monsterCenter, facingVector, spriteSize)
       }
     } else {
       ctx.fillStyle =
-        monster.kind === 'pink-ball' ? '#ff71c4' : monster.kind === 'teeth' ? '#f1c9f9' : '#7b311d'
+        monster.kind === 'pink-ball'
+          ? '#ff71c4'
+          : monster.kind === 'fireball'
+            ? '#ffb167'
+            : monster.kind === 'glider'
+              ? '#9fd8ff'
+              : monster.kind === 'teeth'
+                ? '#f1c9f9'
+                : '#7b311d'
       ctx.beginPath()
       ctx.arc(monsterCenter.x, monsterCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
       ctx.fill()
