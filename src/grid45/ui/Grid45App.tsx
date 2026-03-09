@@ -312,7 +312,7 @@ function inventoryOrbitGroups(keys: InventoryItem[], boots: InventoryItem[], chi
     {
       id: 'chips-keys',
       items: [...chips, ...keys],
-      centerAngleDeg: -36,
+      centerAngleDeg: -48,
       stepDeg: 10,
       radiusOffset: 66,
     },
