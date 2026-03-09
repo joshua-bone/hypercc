@@ -81,6 +81,7 @@ type MiddleDragState = {
 
 type PaintDragState = {
   pointerId: number
+  paintButton: 'left' | 'right'
   lastCellId: number | null
 }
 
@@ -135,6 +136,19 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
     teeth: makePaletteIcon(tileset.teethSprites[mobFacing]),
     none: createClearIcon(),
   }
+}
+
+function iconForPaintTool(
+  tool: EditorPaintTool,
+  facing: Direction,
+  paletteIcons: PaletteIconMap,
+  tileset: Grid45Tileset | null,
+): string | undefined {
+  if (!tileset) return paletteIcons[tool]
+  if (tool === 'ant') return makePaletteIcon(tileset.antSprites[facing])
+  if (tool === 'teeth') return makePaletteIcon(tileset.teethSprites[facing])
+  if (tool === 'pink-ball') return makePaletteIcon(tileset.pinkBallSprite)
+  return paletteIcons[tool]
 }
 
 function nextSeed(): number {
@@ -328,8 +342,10 @@ export default function Grid45App() {
   const [editorCameraCenter, setEditorCameraCenter] = useState<Vec2>(() => playSession.getSnapshot().world.cells[playSession.getSnapshot().world.startCellId].center)
   const [editorCameraAngle, setEditorCameraAngle] = useState(0)
   const [editorSelectedCellId, setEditorSelectedCellId] = useState<number>(() => playSession.getSnapshot().world.startCellId)
-  const [editorTool, setEditorTool] = useState<EditorPaintTool>('floor')
-  const [editorMobFacing, setEditorMobFacing] = useState<Direction>('north')
+  const [editorLeftTool, setEditorLeftTool] = useState<EditorPaintTool>('floor')
+  const [editorRightTool, setEditorRightTool] = useState<EditorPaintTool>('wall')
+  const [editorLeftMobFacing, setEditorLeftMobFacing] = useState<Direction>('north')
+  const [editorRightMobFacing, setEditorRightMobFacing] = useState<Direction>('north')
   const [editorIntent, setEditorIntent] = useState<MoveIntent>('stay')
   const [editorRotateIntent, setEditorRotateIntent] = useState<-1 | 0 | 1>(0)
   const showDevToggle = import.meta.env.DEV
@@ -392,6 +408,14 @@ export default function Grid45App() {
     setEditorCameraCenter(center)
   }
 
+  const assignEditorTool = (paintButton: 'left' | 'right', tool: EditorPaintTool) => {
+    if (paintButton === 'left') {
+      setEditorLeftTool(tool)
+    } else {
+      setEditorRightTool(tool)
+    }
+  }
+
   useEffect(() => {
     let active = true
 
@@ -421,8 +445,8 @@ export default function Grid45App() {
 
   useEffect(() => {
     if (!tileset) return
-    setPaletteIcons(createPaletteIconMap(tileset, editorMobFacing))
-  }, [tileset, editorMobFacing])
+    setPaletteIcons(createPaletteIconMap(tileset, 'north'))
+  }, [tileset])
 
   useEffect(() => {
     const unsubscribe = playSession.subscribe(setPlaySnapshot)
@@ -650,11 +674,13 @@ export default function Grid45App() {
     setEditorCameraAngle(0)
   }
 
-  const paintSelectedCell = (cellId: number, includeUndo = false) => {
+  const paintSelectedCell = (cellId: number, paintButton: 'left' | 'right', includeUndo = false) => {
     if (includeUndo) pushEditorUndo()
+    const tool = paintButton === 'left' ? editorLeftTool : editorRightTool
+    const facing = paintButton === 'left' ? editorLeftMobFacing : editorRightMobFacing
     setEditorSelectedCellId(cellId)
-    setEditorWorld((world) => paintEditorWorld(world, cellId, editorTool, editorMobFacing))
-    if (editorTool === 'start') {
+    setEditorWorld((world) => paintEditorWorld(world, cellId, tool, facing))
+    if (tool === 'start') {
       const center = editorWorld.cells[cellId]?.center
       if (center) {
         editorCameraCenterRef.current = center
@@ -699,14 +725,16 @@ export default function Grid45App() {
     )
 
     if (event.type === 'pointerdown') {
-      if (event.button === 0) {
+      if (event.button === 0 || event.button === 2) {
         event.preventDefault()
         canvas.setPointerCapture(event.pointerId)
+        const paintButton = event.button === 0 ? 'left' : 'right'
         paintDragRef.current = {
           pointerId: event.pointerId,
+          paintButton,
           lastCellId: cellId,
         }
-        if (cellId !== null) paintSelectedCell(cellId, true)
+        if (cellId !== null) paintSelectedCell(cellId, paintButton, true)
         return
       }
 
@@ -727,10 +755,12 @@ export default function Grid45App() {
 
     if (event.type === 'pointermove') {
       const paintDrag = paintDragRef.current
-      if (paintDrag && paintDrag.pointerId === event.pointerId && (event.buttons & 1) === 1) {
+      const isLeftPainting = paintDrag?.paintButton === 'left' && (event.buttons & 1) === 1
+      const isRightPainting = paintDrag?.paintButton === 'right' && (event.buttons & 2) === 2
+      if (paintDrag && paintDrag.pointerId === event.pointerId && (isLeftPainting || isRightPainting)) {
         if (cellId !== null && cellId !== paintDrag.lastCellId) {
           paintDrag.lastCellId = cellId
-          paintSelectedCell(cellId)
+          paintSelectedCell(cellId, paintDrag.paintButton)
         }
       }
 
@@ -991,7 +1021,7 @@ export default function Grid45App() {
           ) : (
             <>
               <div className="grid45Line">
-                Left drag paints. Middle drag pans. Double middle click centers on a tile. Arrow keys move smoothly; Q / E orbit around the hyperbolic center.
+                Left click palette sets the left brush, right click palette sets the right brush. Left or right drag paints. Middle drag pans. Double middle click centers on a tile.
               </div>
               <div className="grid45Metrics">Seed: {editorWorld.seed}</div>
               <div className="grid45Metrics">Total Cells: {editorTotalCells}</div>
@@ -999,6 +1029,8 @@ export default function Grid45App() {
               <div className="grid45Metrics">Selected Cell: {editorSelectedCellId}</div>
               <div className="grid45Metrics">Monsters: {editorMonsterTotal}</div>
               <div className="grid45Metrics">Undo: {editorHistory.length}</div>
+              <div className="grid45Metrics">Left Brush: {editorLeftTool}</div>
+              <div className="grid45Metrics">Right Brush: {editorRightTool}</div>
               <div className="grid45Metrics">Mode: Edit</div>
               <div className="grid45Controls">
                 <button className="grid45Button grid45ButtonPrimary" type="button" onClick={startEditorPlaytest}>
@@ -1051,28 +1083,72 @@ export default function Grid45App() {
                 {editorPalette.map((item) => (
                   <button
                     key={item.tool}
-                    className={`grid45PaletteButton${editorTool === item.tool ? ' grid45PaletteButtonActive' : ''}`}
+                    className={`grid45PaletteButton${editorLeftTool === item.tool ? ' grid45PaletteButtonLeft' : ''}${editorRightTool === item.tool ? ' grid45PaletteButtonRight' : ''}`}
                     type="button"
-                    onClick={() => setEditorTool(item.tool)}
+                    onClick={() => assignEditorTool('left', item.tool)}
+                    onContextMenu={(event) => {
+                      event.preventDefault()
+                      assignEditorTool('right', item.tool)
+                    }}
                   >
                     {paletteIcons[item.tool] ? <img className="grid45PaletteIcon" src={paletteIcons[item.tool]} alt="" /> : null}
                     <span>{item.label}</span>
+                    <span className="grid45PaletteAssignments">
+                      {editorLeftTool === item.tool ? <span className="grid45PaletteBadge">L</span> : null}
+                      {editorRightTool === item.tool ? <span className="grid45PaletteBadge grid45PaletteBadgeAlt">R</span> : null}
+                    </span>
                   </button>
                 ))}
               </div>
             </>
           )}
-          {!playtestSnapshot && isMobTool(editorTool) ? (
-            <div className="grid45Controls">
-              {paletteIcons[editorTool] ? <img className="grid45FacingPreview" src={paletteIcons[editorTool]} alt="" /> : null}
-              <div className="grid45Metrics">Mob Facing: {editorMobFacing}</div>
-              <button className="grid45Button grid45StepButton" type="button" onClick={() => setEditorMobFacing((direction) => rotateDirection(direction, -1))}>
-                ↺
-              </button>
-              <button className="grid45Button grid45StepButton" type="button" onClick={() => setEditorMobFacing((direction) => rotateDirection(direction, 1))}>
-                ↻
-              </button>
-            </div>
+          {!playtestSnapshot ? (
+            <>
+              <div className="grid45Controls">
+                {iconForPaintTool(editorLeftTool, editorLeftMobFacing, paletteIcons, tileset) ? (
+                  <img className="grid45FacingPreview" src={iconForPaintTool(editorLeftTool, editorLeftMobFacing, paletteIcons, tileset)} alt="" />
+                ) : null}
+                <div className="grid45Metrics">Left Facing: {editorLeftMobFacing}</div>
+                <button
+                  className="grid45Button grid45StepButton"
+                  type="button"
+                  onClick={() => setEditorLeftMobFacing((direction) => rotateDirection(direction, -1))}
+                  disabled={!isMobTool(editorLeftTool)}
+                >
+                  ↺
+                </button>
+                <button
+                  className="grid45Button grid45StepButton"
+                  type="button"
+                  onClick={() => setEditorLeftMobFacing((direction) => rotateDirection(direction, 1))}
+                  disabled={!isMobTool(editorLeftTool)}
+                >
+                  ↻
+                </button>
+              </div>
+              <div className="grid45Controls">
+                {iconForPaintTool(editorRightTool, editorRightMobFacing, paletteIcons, tileset) ? (
+                  <img className="grid45FacingPreview" src={iconForPaintTool(editorRightTool, editorRightMobFacing, paletteIcons, tileset)} alt="" />
+                ) : null}
+                <div className="grid45Metrics">Right Facing: {editorRightMobFacing}</div>
+                <button
+                  className="grid45Button grid45StepButton"
+                  type="button"
+                  onClick={() => setEditorRightMobFacing((direction) => rotateDirection(direction, -1))}
+                  disabled={!isMobTool(editorRightTool)}
+                >
+                  ↺
+                </button>
+                <button
+                  className="grid45Button grid45StepButton"
+                  type="button"
+                  onClick={() => setEditorRightMobFacing((direction) => rotateDirection(direction, 1))}
+                  disabled={!isMobTool(editorRightTool)}
+                >
+                  ↻
+                </button>
+              </div>
+            </>
           ) : null}
         </div>
       )}

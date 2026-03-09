@@ -245,6 +245,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  justify-content: space-between;
   padding: 10px 12px;
   border: 1px solid rgba(241, 234, 216, 0.16);
   border-radius: 12px;
@@ -255,9 +256,37 @@ body {
   text-align: left;
 }
 
-.grid45PaletteButtonActive {
+.grid45PaletteButtonLeft {
   border-color: rgba(255, 209, 102, 0.72);
   background: rgba(200, 169, 107, 0.2);
+}
+
+.grid45PaletteButtonRight {
+  box-shadow: inset 0 0 0 2px rgba(94, 160, 198, 0.58);
+}
+
+.grid45PaletteAssignments {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.grid45PaletteBadge {
+  min-width: 20px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(255, 209, 102, 0.2);
+  color: #ffe39d;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.grid45PaletteBadgeAlt {
+  background: rgba(94, 160, 198, 0.2);
+  color: #9dd8f2;
 }
 
 .grid45PaletteIcon,
