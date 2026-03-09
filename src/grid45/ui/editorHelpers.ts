@@ -108,7 +108,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
     return normalizeEditorWorld(nextWorld)
   }
 
-  if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank') {
+  if (tool === 'ant' || tool === 'pink-ball' || tool === 'teeth' || tool === 'tank' || tool === 'dirt-block') {
     cell.kind = 'floor'
     cell.feature = 'none'
     nextWorld.initialMonsters.push({
@@ -135,6 +135,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
 export function rotateEditorMobAtCell(world: MazeWorld, cellId: number, delta: -1 | 1): MazeWorld {
   const monsterIndex = world.initialMonsters.findIndex((monster) => monster.cellId === cellId)
   if (monsterIndex < 0) return world
+  if (world.initialMonsters[monsterIndex].kind === 'dirt-block') return world
 
   const nextWorld = cloneMazeWorld(world)
   nextWorld.initialMonsters[monsterIndex].facing = rotateDirection(nextWorld.initialMonsters[monsterIndex].facing, delta)

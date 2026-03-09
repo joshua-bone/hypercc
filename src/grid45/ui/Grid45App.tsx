@@ -50,6 +50,7 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'toggle-floor', label: 'Toggle Floor' },
   { tool: 'toggle-wall', label: 'Toggle Wall' },
   { tool: 'start', label: 'Start' },
+  { tool: 'bomb', label: 'Bomb' },
   { tool: 'chip', label: 'Chip' },
   { tool: 'green-button', label: 'Green Button' },
   { tool: 'socket', label: 'Socket' },
@@ -64,6 +65,7 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'door-green', label: 'Green Door' },
   { tool: 'door-yellow', label: 'Yellow Door' },
   { tool: 'ant', label: 'Ant' },
+  { tool: 'dirt-block', label: 'Dirt Block' },
   { tool: 'pink-ball', label: 'Pink Ball' },
   { tool: 'teeth', label: 'Teeth' },
   { tool: 'tank', label: 'Tank' },
@@ -129,6 +131,7 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
     'toggle-floor': makePaletteIcon(tileset.tiles['toggle-floor']),
     'toggle-wall': makePaletteIcon(tileset.tiles['toggle-wall']),
     start: makePaletteIcon(tileset.playerSprites.north),
+    bomb: makePaletteIcon(tileset.features.bomb),
     chip: makePaletteIcon(tileset.features.chip),
     'green-button': makePaletteIcon(tileset.features['green-button']),
     socket: makePaletteIcon(tileset.features.socket),
@@ -143,6 +146,7 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
     'door-green': makePaletteIcon(tileset.features['door-green']),
     'door-yellow': makePaletteIcon(tileset.features['door-yellow']),
     ant: makePaletteIcon(tileset.antSprites[mobFacing]),
+    'dirt-block': makePaletteIcon(tileset.dirtBlockSprite),
     'pink-ball': makePaletteIcon(tileset.pinkBallSprite),
     teeth: makePaletteIcon(tileset.teethSprites[mobFacing]),
     tank: makePaletteIcon(tileset.tankSprites[mobFacing]),
@@ -158,6 +162,7 @@ function iconForPaintTool(
 ): string | undefined {
   if (!tileset) return paletteIcons[tool]
   if (tool === 'ant') return makePaletteIcon(tileset.antSprites[facing])
+  if (tool === 'dirt-block') return makePaletteIcon(tileset.dirtBlockSprite)
   if (tool === 'teeth') return makePaletteIcon(tileset.teethSprites[facing])
   if (tool === 'tank') return makePaletteIcon(tileset.tankSprites[facing])
   if (tool === 'pink-ball') return makePaletteIcon(tileset.pinkBallSprite)

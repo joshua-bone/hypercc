@@ -18,6 +18,7 @@ export type Grid45Tileset = {
   antSprites: Record<Direction, HTMLCanvasElement>
   teethSprites: Record<Direction, HTMLCanvasElement>
   tankSprites: Record<Direction, HTMLCanvasElement>
+  dirtBlockSprite: HTMLCanvasElement
   pinkBallSprite: HTMLCanvasElement
 }
 
@@ -124,6 +125,7 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       'toggle-wall': drawTile(image, { col: 3, row: 6 }),
     },
     features: {
+      bomb: drawTile(image, { col: 3, row: 11 }),
       chip: drawTile(image, { col: 1, row: 3 }),
       'green-button': drawTile(image, { col: 3, row: 4 }),
       socket: drawTile(image, { col: 3, row: 3 }),
@@ -174,6 +176,7 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       south: applyMask(drawTile(image, { col: 8, row: tankTileRows.south }), drawTile(image, { col: 11, row: tankTileRows.south })),
       west: applyMask(drawTile(image, { col: 8, row: tankTileRows.west }), drawTile(image, { col: 11, row: tankTileRows.west })),
     },
+    dirtBlockSprite: drawTile(image, { col: 2, row: 1 }),
     pinkBallSprite: applyMask(drawTile(image, { col: 8, row: 9 }), drawTile(image, { col: 11, row: 9 })),
   }
 }

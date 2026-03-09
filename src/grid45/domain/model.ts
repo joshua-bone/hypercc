@@ -7,6 +7,7 @@ export const keyColors = ['blue', 'red', 'green', 'yellow'] as const
 export type KeyColor = (typeof keyColors)[number]
 export type CellFeature =
   | 'none'
+  | 'bomb'
   | 'chip'
   | 'green-button'
   | 'socket'
@@ -24,7 +25,7 @@ export type TickOutcome = 'moved' | 'blocked' | 'resting' | 'locked' | 'complete
 
 export type DirectionMap<T> = Record<Direction, T>
 export type KeyInventory = Record<KeyColor, number>
-export type MonsterKind = 'ant' | 'pink-ball' | 'teeth' | 'tank'
+export type MonsterKind = 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'dirt-block'
 
 export type AreaDagNode = {
   id: number
@@ -97,6 +98,7 @@ export type GameState = {
   remainingChipCellIds: Set<number>
   collectedKeyCellIds: Set<number>
   openedDoorCellIds: Set<number>
+  removedBombCellIds: Set<number>
   keyInventory: KeyInventory
   socketCleared: boolean
   togglePhase: boolean

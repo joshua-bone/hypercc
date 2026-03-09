@@ -244,12 +244,14 @@ function monsterSpriteRotation(
   state: Pick<GameState, 'cameraAngle' | 'playerCellId' | 'world'>,
   options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle'>,
 ): number {
+  if (monster.kind === 'dirt-block') return 0
   const facingVector = monsterFacingVector(monster, state, options)
   const actualAngle = Math.atan2(facingVector.x, facingVector.y)
   return actualAngle - directionBaseAngle(monster.facing)
 }
 
 function monsterBaseSprite(monster: MonsterState, tileset: Grid45Tileset): CanvasImageSource {
+  if (monster.kind === 'dirt-block') return tileset.dirtBlockSprite
   if (monster.kind === 'pink-ball') return tileset.pinkBallSprite
   if (monster.kind === 'teeth') return tileset.teethSprites[monster.facing]
   if (monster.kind === 'tank') return tileset.tankSprites[monster.facing]
@@ -342,9 +344,10 @@ function baseFillForCell(kind: MazeCell['kind']): string {
 
 function featureIsVisible(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
 ): boolean {
   if (cell.feature === 'none') return false
+  if (cell.feature === 'bomb') return !state.removedBombCellIds.has(cell.id)
   if (cell.feature === 'chip') return state.remainingChipCellIds.has(cell.id)
   if (cell.feature === 'socket') return !state.socketCleared
   if (keyColorFromFeature(cell.feature) !== null) return !state.collectedKeyCellIds.has(cell.id)
@@ -354,9 +357,10 @@ function featureIsVisible(
 
 function featureFillForCell(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
 ): string | null {
   if (!featureIsVisible(cell, state)) return null
+  if (cell.feature === 'bomb') return '#a85d5d'
   if (cell.feature === 'chip') return '#e0c15b'
   if (cell.feature === 'green-button') return '#7ad065'
   if (cell.feature === 'socket') return '#5ea0c6'
@@ -380,7 +384,7 @@ function featureFillForCell(
 
 function featureSpriteForCell(
   cell: MazeCell,
-  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'socketCleared'>,
+  state: Pick<GameState, 'remainingChipCellIds' | 'collectedKeyCellIds' | 'openedDoorCellIds' | 'removedBombCellIds' | 'socketCleared'>,
   tileset: Grid45Tileset,
 ): CanvasImageSource | null {
   if (!featureIsVisible(cell, state)) return null
@@ -652,6 +656,7 @@ export function renderGrid45Scene(
       }
     } else {
       ctx.fillStyle =
+        monster.kind === 'dirt-block' ? '#7e6547' :
         monster.kind === 'pink-ball' ? '#ff71c4' :
         monster.kind === 'teeth' ? '#f1c9f9' :
         '#7b311d'
