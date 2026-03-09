@@ -7,6 +7,8 @@ export type Grid45Session = {
   getSnapshot(): GameState
   subscribe(listener: (state: GameState) => void): () => void
   setIntent(intent: MoveIntent): void
+  step(intent: MoveIntent, ticks: number): void
+  undo(): void
   restart(): void
   reset(size?: WorldSize, antCount?: number, pinkBallCount?: number, teethCount?: number, tankCount?: number, seed?: number): void
   start(): void
@@ -47,11 +49,16 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
 
   let state = createInitialGameState(currentWorld)
   let pendingIntent: MoveIntent = 'stay'
+  let history: GameState[] = []
   let stopClock = () => {}
   let running = false
 
   const emit = () => {
     for (const listener of listeners) listener(state)
+  }
+
+  const pushHistory = () => {
+    history = history.concat(state).slice(-256)
   }
 
   const haltClock = () => {
@@ -91,9 +98,31 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
         if (!state.levelComplete && !state.playerDead) beginTicking()
       }
     },
+    step(intent, ticks) {
+      if (ticks <= 0) return
+      haltClock()
+      if (state.levelComplete || state.playerDead) return
+      pushHistory()
+      for (let stepIndex = 0; stepIndex < ticks; stepIndex += 1) {
+        state = advanceGame(state, stepIndex === 0 ? intent : 'stay')
+        if (state.levelComplete || state.playerDead) break
+      }
+      pendingIntent = 'stay'
+      emit()
+    },
+    undo() {
+      haltClock()
+      const previous = history[history.length - 1]
+      if (!previous) return
+      history = history.slice(0, -1)
+      pendingIntent = 'stay'
+      state = previous
+      emit()
+    },
     restart() {
       haltClock()
       pendingIntent = 'stay'
+      history = []
       state = createInitialGameState(currentWorld)
       emit()
     },
@@ -105,6 +134,7 @@ export function createGrid45Session(options: CreateGrid45SessionOptions): Grid45
       tankCount = nextTankCount
       haltClock()
       pendingIntent = 'stay'
+      history = []
       currentWorld = createWorld(seedOverride)
       state = createInitialGameState(currentWorld)
       emit()

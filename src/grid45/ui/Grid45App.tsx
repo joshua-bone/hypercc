@@ -5,6 +5,7 @@ import { createIntervalClock } from '../adapters/intervalClock'
 import { attachKeyboardIntent } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
+import { directionFromKey } from '../domain/directions'
 import { createInitialGameState } from '../domain/engine'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
 import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTankCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
@@ -205,6 +206,10 @@ function isSpaceKey(event: KeyboardEvent): boolean {
   return event.code === 'Space' || event.key === ' ' || event.key === 'Spacebar'
 }
 
+function isUndoKey(event: KeyboardEvent): boolean {
+  return !event.ctrlKey && !event.metaKey && !event.altKey && (event.key === 'z' || event.key === 'Z')
+}
+
 function describeOutcome(snapshot: GameState): string {
   if (snapshot.levelComplete) return 'You Win!'
   if (snapshot.playerDead) return 'You Died!'
@@ -358,6 +363,7 @@ export default function Grid45App() {
   const [pinkBallCount, setPinkBallCount] = useState<number>(defaultPinkBallCount)
   const [teethCount, setTeethCount] = useState<number>(defaultTeethCount)
   const [tankCount, setTankCount] = useState<number>(defaultTankCount)
+  const [stepModeEnabled, setStepModeEnabled] = useState(false)
   const [seedInput, setSeedInput] = useState('')
   const [editorBlankSize, setEditorBlankSize] = useState<WorldSize>(defaultWorldSize)
   const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => cloneMazeWorld(playSession.getSnapshot().world))
@@ -385,6 +391,12 @@ export default function Grid45App() {
   const tankTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'tank').length
   const editorMonsterTotal = editorWorld.initialMonsters.length
   const editorTotalCells = editorWorld.cells.length
+  const playInstructionLine = stepModeEnabled
+    ? 'Step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Restart replays this maze; Generate builds a new one.'
+    : 'Arrow keys or WASD move. Space starts time. Restart replays this maze; Generate builds a new one.'
+  const editorPlaytestInstructionLine = stepModeEnabled
+    ? 'Playtest step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Win, lose, or press ESC to return to the editor.'
+    : 'Playtest running. Arrow keys or WASD move, Space starts time. Win, lose, or press ESC to return to the editor.'
 
   const restoreEditorFrame = (entry: EditorHistoryEntry) => {
     editorCameraCenterRef.current = entry.cameraCenter
@@ -553,6 +565,12 @@ export default function Grid45App() {
   }, [activeTab, playSession])
 
   useEffect(() => {
+    if (!stepModeEnabled) return
+    playSession.stop()
+    playtestSession?.stop()
+  }, [stepModeEnabled, playSession, playtestSession])
+
+  useEffect(() => {
     if (activeTab === 'editor' || !playtestSession) return
     playtestSession.stop()
     setPlaytestSession(null)
@@ -570,6 +588,35 @@ export default function Grid45App() {
 
   useEffect(() => {
     if (activeTab === 'play') {
+      if (stepModeEnabled) {
+        const onKeyDown = (event: KeyboardEvent) => {
+          if (showPlayEndOverlay) return
+
+          const direction = directionFromKey(event.key)
+          if (direction && direction !== 'stay') {
+            event.preventDefault()
+            playSession.step(direction, 2)
+            return
+          }
+
+          if (isSpaceKey(event)) {
+            event.preventDefault()
+            playSession.step('stay', 1)
+            return
+          }
+
+          if (isUndoKey(event)) {
+            event.preventDefault()
+            playSession.undo()
+          }
+        }
+
+        window.addEventListener('keydown', onKeyDown, { passive: false })
+        return () => {
+          window.removeEventListener('keydown', onKeyDown)
+        }
+      }
+
       const detachKeyboard = attachKeyboardIntent(window, playSession.setIntent)
       const onKeyDown = (event: KeyboardEvent) => {
         if (!isSpaceKey(event)) return
@@ -585,6 +632,43 @@ export default function Grid45App() {
     }
 
     if (playtestSession) {
+      if (stepModeEnabled) {
+        const onKeyDown = (event: KeyboardEvent) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            playtestSession.stop()
+            setPlaytestSession(null)
+            setPlaytestSnapshot(null)
+            return
+          }
+
+          if (playtestSnapshot?.levelComplete || playtestSnapshot?.playerDead) return
+
+          const direction = directionFromKey(event.key)
+          if (direction && direction !== 'stay') {
+            event.preventDefault()
+            playtestSession.step(direction, 2)
+            return
+          }
+
+          if (isSpaceKey(event)) {
+            event.preventDefault()
+            playtestSession.step('stay', 1)
+            return
+          }
+
+          if (isUndoKey(event)) {
+            event.preventDefault()
+            playtestSession.undo()
+          }
+        }
+
+        window.addEventListener('keydown', onKeyDown, { passive: false })
+        return () => {
+          window.removeEventListener('keydown', onKeyDown)
+        }
+      }
+
       const detachKeyboard = attachKeyboardIntent(window, playtestSession.setIntent)
       const onKeyDown = (event: KeyboardEvent) => {
         if (isSpaceKey(event)) {
@@ -640,7 +724,7 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeTab, playSession, playtestSession, rotateSelectedEditorMob, undoEditor])
+  }, [activeTab, playSession, playtestSession, playtestSnapshot, rotateSelectedEditorMob, showPlayEndOverlay, stepModeEnabled, undoEditor])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -980,7 +1064,7 @@ export default function Grid45App() {
           <div className="grid45Eyebrow">Hyperbolic CC</div>
           <div className="grid45Line">Collect every chip, pass through the socket, then reach the exit.</div>
           <div className="grid45Line">Monsters are placed randomly and may render maps unsolveable.</div>
-          <div className="grid45Line">Arrow keys or WASD move. Restart replays this maze; Generate builds a new one.</div>
+          <div className="grid45Line">{playInstructionLine}</div>
           <div className="grid45Metrics">Tick {playSnapshot.tick}</div>
           <div className="grid45Metrics">State: {describeOutcome(playSnapshot)}</div>
           <div className="grid45Metrics">Chips: {chipsCollected} / {totalChips}</div>
@@ -1002,6 +1086,14 @@ export default function Grid45App() {
               <span>Dev mode</span>
             </label>
           ) : null}
+          <label className="grid45Toggle">
+            <input
+              type="checkbox"
+              checked={stepModeEnabled}
+              onChange={(event) => setStepModeEnabled(event.target.checked)}
+            />
+            <span>Step Mode</span>
+          </label>
           <div className="grid45Controls">
             <button className="grid45Button" onClick={() => playSession.restart()}>
               Restart Map
@@ -1125,11 +1217,19 @@ export default function Grid45App() {
           <div className="grid45Eyebrow">Editor</div>
           {playtestSnapshot ? (
             <>
-              <div className="grid45Line">Playtest running. Win, lose, or press ESC to return to the editor.</div>
+              <div className="grid45Line">{editorPlaytestInstructionLine}</div>
               <div className="grid45Metrics">Tick: {playtestSnapshot.tick}</div>
               <div className="grid45Metrics">State: {describeOutcome(playtestSnapshot)}</div>
               <div className="grid45Metrics">Chips: {playtestSnapshot.world.chipCellIds.length - playtestSnapshot.remainingChipCellIds.size} / {playtestSnapshot.world.chipCellIds.length}</div>
               <div className="grid45Metrics">Keys: {formatKeyInventory(playtestSnapshot)}</div>
+              <label className="grid45Toggle">
+                <input
+                  type="checkbox"
+                  checked={stepModeEnabled}
+                  onChange={(event) => setStepModeEnabled(event.target.checked)}
+                />
+                <span>Step Mode</span>
+              </label>
               <div className="grid45Controls">
                 <button
                   className="grid45Button"
@@ -1150,6 +1250,14 @@ export default function Grid45App() {
               <div className="grid45Line">
                 Left click palette sets the left brush, right click palette sets the right brush. Left or right drag paints. Middle drag pans. Double middle click centers on a tile.
               </div>
+              <label className="grid45Toggle">
+                <input
+                  type="checkbox"
+                  checked={stepModeEnabled}
+                  onChange={(event) => setStepModeEnabled(event.target.checked)}
+                />
+                <span>Step Mode for Playtest</span>
+              </label>
               <div className="grid45Metrics">Seed: {editorWorld.seed}</div>
               <div className="grid45Metrics">Total Cells: {editorTotalCells}</div>
               <div className="grid45Metrics">Start Cell: {editorWorld.startCellId}</div>
