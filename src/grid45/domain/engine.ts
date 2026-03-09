@@ -244,10 +244,7 @@ function advanceMonsters(
       const nextMonster = {
         ...activeMonster,
         cellId: targetId,
-        facing:
-          activeMonster.kind === 'tank'
-            ? activeMonster.facing
-            : nextFacingFromMove(state.world, monster.cellId, targetId, direction),
+        facing: nextFacingFromMove(state.world, monster.cellId, targetId, direction),
         recoveryTicks: cooldownTicksForMonster(activeMonster.kind),
       }
       nextMonsters.push(nextMonster)
