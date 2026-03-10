@@ -1,8 +1,11 @@
 import { hyperbolicDistance } from '../../hyper/poincare'
 import type { Vec2 } from '../../hyper/vec2'
-import { currentCellKind, isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeWorld, type MonsterKind } from '../domain/model'
+import { currentCellKind, isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeCell, type MazeWorld, type MonsterKind } from '../domain/model'
+import { directions } from '../domain/directions'
 
-export type EditorPaintTool = CellKind | 'start' | CellFeature | MonsterKind
+type PaintableCellKind = Exclude<CellKind, 'void'>
+
+export type EditorPaintTool = PaintableCellKind | 'start' | CellFeature | MonsterKind
 
 const customAreaDag: AreaDag = {
   nodes: [],
@@ -18,8 +21,17 @@ function nextMonsterId(world: MazeWorld): number {
   return world.initialMonsters.reduce((best, monster) => Math.max(best, monster.id), -1) + 1
 }
 
+function isMapCell(cell: Pick<MazeCell, 'kind'>): boolean {
+  return cell.kind !== 'void'
+}
+
+function firstMapCellId(world: MazeWorld): number {
+  return world.cells.find((cell) => isMapCell(cell))?.id ?? 0
+}
+
 function firstFloorCellId(world: MazeWorld): number {
   return world.cells.find((cell) => {
+    if (!isMapCell(cell)) return false
     const kind = currentCellKind(cell.kind, false)
     return kind === 'floor' || kind === 'toggle-floor' || kind === 'dirt' || kind === 'gravel'
   })?.id ?? 0
@@ -39,11 +51,46 @@ export function rotateDirection(direction: Direction, delta: -1 | 1): Direction 
   return directions[(currentIndex + delta + directions.length) % directions.length]
 }
 
+function hasAdjacentMapCell(world: MazeWorld, cellId: number): boolean {
+  const cell = world.cells[cellId]
+  return directions.some((direction) => {
+    const neighborId = cell.exits[direction]
+    return neighborId !== null && isMapCell(world.cells[neighborId])
+  })
+}
+
+export function collectEditorBoundaryCellIds(world: MazeWorld): number[] {
+  return world.cells
+    .filter((cell) => {
+      if (!isMapCell(cell)) return false
+      return directions.some((direction) => {
+        const neighborId = cell.exits[direction]
+        return neighborId === null || !isMapCell(world.cells[neighborId])
+      })
+    })
+    .map((cell) => cell.id)
+}
+
+export function collectEditorGrowCellIds(world: MazeWorld): number[] {
+  return world.cells
+    .filter((cell) => !isMapCell(cell) && hasAdjacentMapCell(world, cell.id))
+    .map((cell) => cell.id)
+}
+
+export function countEditorMapCells(world: MazeWorld): number {
+  return world.cells.reduce((count, cell) => count + (isMapCell(cell) ? 1 : 0), 0)
+}
+
+export function canPaintEditorBoundaryCell(world: MazeWorld, cellId: number): boolean {
+  const cell = world.cells[cellId]
+  return !!cell && (!isMapCell(cell) ? hasAdjacentMapCell(world, cellId) : true)
+}
+
 export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   const nextWorld = cloneMazeWorld(world)
 
   for (const cell of nextWorld.cells) {
-    if (!isPassableCellKind(cell.kind, false)) {
+    if (!isMapCell(cell) || !isPassableCellKind(cell.kind, false)) {
       cell.feature = 'none'
     }
   }
@@ -61,6 +108,7 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   nextWorld.initialMonsters = nextWorld.initialMonsters
     .filter((monster) => {
       const cell = nextWorld.cells[monster.cellId]
+      if (!isMapCell(cell)) return false
       const kind = currentCellKind(cell.kind, false)
       const canOccupy =
         kind === 'floor' ||
@@ -82,6 +130,18 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
     nextWorld.startCellId = firstFloorCellId(nextWorld)
   }
 
+  const normalizedStartKind = currentCellKind(nextWorld.cells[nextWorld.startCellId]?.kind ?? 'void', false)
+  const normalizedStartPassable =
+    normalizedStartKind === 'floor' ||
+    normalizedStartKind === 'toggle-floor' ||
+    normalizedStartKind === 'dirt' ||
+    normalizedStartKind === 'gravel'
+  if (!isMapCell(nextWorld.cells[nextWorld.startCellId] ?? { kind: 'void' }) || !normalizedStartPassable) {
+    const fallbackCellId = firstMapCellId(nextWorld)
+    nextWorld.cells[fallbackCellId].kind = 'floor'
+    nextWorld.startCellId = fallbackCellId
+  }
+
   nextWorld.chipCellIds = nextWorld.cells.filter((cell) => cell.feature === 'chip').map((cell) => cell.id)
   nextWorld.socketCellId = nextWorld.cells.find((cell) => cell.feature === 'socket')?.id ?? nextWorld.startCellId
   nextWorld.exitCellId = nextWorld.cells.find((cell) => cell.feature === 'exit')?.id ?? nextWorld.startCellId
@@ -91,6 +151,8 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
 }
 
 export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorPaintTool, facing: Direction): MazeWorld {
+  if (!canPaintEditorBoundaryCell(world, cellId)) return world
+
   const nextWorld = cloneMazeWorld(world)
   const cell = nextWorld.cells[cellId]
 
@@ -123,6 +185,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
   }
 
   if (tool === 'none') {
+    if (!isMapCell(cell)) return world
     cell.feature = 'none'
     return normalizeEditorWorld(nextWorld)
   }
@@ -177,6 +240,7 @@ export function createBlankFloorEditorWorld(world: MazeWorld, startCellId = worl
   const safeStartCellId = nextWorld.cells[startCellId] ? startCellId : nextWorld.startCellId
 
   for (const cell of nextWorld.cells) {
+    if (!isMapCell(cell)) continue
     cell.kind = 'floor'
     cell.feature = 'none'
   }
@@ -198,10 +262,11 @@ export function downloadWorldJson(world: MazeWorld): void {
 }
 
 export function nearestCellIdToPoint(world: MazeWorld, point: Vec2): number {
-  let bestCellId = world.startCellId
+  let bestCellId = firstMapCellId(world)
   let bestDistance = Number.POSITIVE_INFINITY
 
   for (const cell of world.cells) {
+    if (!isMapCell(cell)) continue
     const distance = hyperbolicDistance(cell.center, point)
     if (distance < bestDistance) {
       bestDistance = distance
@@ -210,4 +275,31 @@ export function nearestCellIdToPoint(world: MazeWorld, point: Vec2): number {
   }
 
   return bestCellId
+}
+
+export function shrinkEditorWorld(world: MazeWorld): MazeWorld {
+  const boundaryCellIds = collectEditorBoundaryCellIds(world)
+  const mapCellCount = countEditorMapCells(world)
+  if (boundaryCellIds.length === 0 || boundaryCellIds.length >= mapCellCount) return world
+
+  const nextWorld = cloneMazeWorld(world)
+  for (const cellId of boundaryCellIds) {
+    nextWorld.cells[cellId].kind = 'void'
+    nextWorld.cells[cellId].feature = 'none'
+  }
+
+  return normalizeEditorWorld(nextWorld)
+}
+
+export function growEditorWorld(world: MazeWorld): MazeWorld {
+  const growCellIds = collectEditorGrowCellIds(world)
+  if (growCellIds.length === 0) return world
+
+  const nextWorld = cloneMazeWorld(world)
+  for (const cellId of growCellIds) {
+    nextWorld.cells[cellId].kind = 'floor'
+    nextWorld.cells[cellId].feature = 'none'
+  }
+
+  return normalizeEditorWorld(nextWorld)
 }

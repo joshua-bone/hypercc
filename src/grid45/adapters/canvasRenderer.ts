@@ -1,7 +1,8 @@
 import { geodesicPolyline } from '../../hyper/geodesic'
+import { hyperbolicDistance } from '../../hyper/poincare'
 import { dot, norm, type Vec2 } from '../../hyper/vec2'
 import { toCameraView } from '../domain/camera'
-import { directionVectors } from '../domain/directions'
+import { directions, directionVectors } from '../domain/directions'
 import { currentCellKind, doorColorFromFeature, keyColorFromFeature } from '../domain/model'
 import type { Grid45Tileset } from './spriteAtlas'
 import type { Direction, GameState, MazeCell, MonsterState } from '../domain/model'
@@ -27,6 +28,7 @@ export type Grid45RenderOptions = {
   cameraCenter?: Vec2
   cameraAngle?: number
   highlightCellId?: number | null
+  previewCellId?: number | null
   showPlayer?: boolean
   viewportInset?: {
     top: number
@@ -41,6 +43,8 @@ export type Grid45DiskFrame = {
   centerY: number
   diskRadius: number
 }
+
+const MAX_RENDER_CELL_DISTANCE = 8
 
 function midpoint(a: Vec2, b: Vec2): Vec2 {
   return {
@@ -150,6 +154,76 @@ function outlineBounds(outline: ProjectedOutline): { minX: number; minY: number;
   }
 
   return { minX, minY, maxX, maxY }
+}
+
+function isMapCell(cell: Pick<MazeCell, 'kind'>): boolean {
+  return cell.kind !== 'void'
+}
+
+function hasAdjacentMapCell(world: GameState['world'], cellId: number): boolean {
+  const cell = world.cells[cellId]
+  return directions.some((direction) => {
+    const neighborId = cell.exits[direction]
+    return neighborId !== null && isMapCell(world.cells[neighborId])
+  })
+}
+
+function nearestMapCellId(world: GameState['world'], point: Vec2): number {
+  let bestCellId = world.startCellId
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  for (const cell of world.cells) {
+    if (!isMapCell(cell)) continue
+
+    const distance = hyperbolicDistance(cell.center, point)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      bestCellId = cell.id
+    }
+  }
+
+  return bestCellId
+}
+
+function collectProjectedCellIds(
+  world: GameState['world'],
+  anchorCellId: number,
+  options?: {
+    includeBoundaryVoid?: boolean
+    previewCellId?: number | null
+  },
+): Set<number> {
+  const projectedCellIds = new Set<number>()
+  const visited = new Set<number>([anchorCellId])
+  const queue: Array<{ cellId: number; distance: number }> = [{ cellId: anchorCellId, distance: 0 }]
+
+  while (queue.length > 0) {
+    const entry = queue.shift()
+    if (!entry) break
+
+    const cell = world.cells[entry.cellId]
+    if (
+      isMapCell(cell) ||
+      entry.cellId === options?.previewCellId ||
+      (options?.includeBoundaryVoid && hasAdjacentMapCell(world, entry.cellId))
+    ) {
+      projectedCellIds.add(entry.cellId)
+    }
+
+    if (entry.distance >= MAX_RENDER_CELL_DISTANCE) continue
+
+    for (const direction of directions) {
+      const neighborId = cell.exits[direction]
+      if (neighborId === null || visited.has(neighborId)) continue
+      visited.add(neighborId)
+      queue.push({
+        cellId: neighborId,
+        distance: entry.distance + 1,
+      })
+    }
+  }
+
+  return projectedCellIds
 }
 
 function assignDirectionSides(vertices: Vec2[], center: Vec2): Record<Direction, number> {
@@ -584,19 +658,37 @@ function projectWorldCells(
   cameraAngle: number,
   width: number,
   height: number,
-  viewportInset?: Grid45RenderOptions['viewportInset'],
-): { centerX: number; centerY: number; diskRadius: number; projectedCells: ProjectedCell[] } {
-  const { centerX, centerY, diskRadius } = computeGrid45DiskFrame(width, height, viewportInset)
-  const projectedCells = world.cells.map((cell) => ({
-    cell,
-    shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
-  }))
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'previewCellId' | 'viewportInset'> & { includeBoundaryVoid?: boolean },
+): {
+  centerX: number
+  centerY: number
+  diskRadius: number
+  projectedCells: ProjectedCell[]
+  projectedCellById: Map<number, ProjectedCell>
+} {
+  const { centerX, centerY, diskRadius } = computeGrid45DiskFrame(width, height, options?.viewportInset)
+  const anchorCellId =
+    options?.cameraCellId !== undefined && isMapCell(world.cells[options.cameraCellId])
+      ? options.cameraCellId
+      : nearestMapCellId(world, viewCenter)
+  const projectedCellIds = collectProjectedCellIds(world, anchorCellId, {
+    includeBoundaryVoid: options?.includeBoundaryVoid,
+    previewCellId: options?.previewCellId,
+  })
+  const projectedCells = world.cells
+    .filter((cell) => projectedCellIds.has(cell.id))
+    .map((cell) => ({
+      cell,
+      shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
+    }))
+  const projectedCellById = new Map(projectedCells.map((projected) => [projected.cell.id, projected]))
 
   return {
     centerX,
     centerY,
     diskRadius,
     projectedCells,
+    projectedCellById,
   }
 }
 
@@ -606,11 +698,15 @@ export function pickGrid45CellAtPoint(
   height: number,
   x: number,
   y: number,
-  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle' | 'viewportInset'>,
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'cameraCenter' | 'cameraAngle' | 'viewportInset'> & { includeBoundaryVoid?: boolean },
 ): number | null {
   const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const { projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, options?.viewportInset)
+  const { projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, {
+    cameraCellId: options?.cameraCellId,
+    viewportInset: options?.viewportInset,
+    includeBoundaryVoid: options?.includeBoundaryVoid,
+  })
 
   let bestMatch: { cellId: number; distance: number } | null = null
 
@@ -640,7 +736,11 @@ export function renderGrid45Scene(
 ): void {
   const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
   const cameraAngle = options?.cameraAngle ?? state.cameraAngle
-  const { diskRadius, centerX, centerY, projectedCells } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, options?.viewportInset)
+  const { diskRadius, centerX, centerY, projectedCells, projectedCellById } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, {
+    cameraCellId: options?.cameraCellId,
+    previewCellId: options?.previewCellId,
+    viewportInset: options?.viewportInset,
+  })
 
   ctx.fillStyle = '#05080c'
   ctx.fillRect(0, 0, width, height)
@@ -661,6 +761,7 @@ export function renderGrid45Scene(
 
   for (const projected of projectedCells) {
     const effectiveKind = currentCellKind(projected.cell.kind, state.togglePhase, state.terrainOverrides.get(projected.cell.id))
+    if (effectiveKind === 'void') continue
     fillCell(
       ctx,
       projected.shape.outline,
@@ -688,7 +789,7 @@ export function renderGrid45Scene(
   }
 
   for (const monster of state.monsters) {
-    const monsterShape = projectedCells[monster.cellId]?.shape
+    const monsterShape = projectedCellById.get(monster.cellId)?.shape
     if (!monsterShape) continue
 
     if (monster.kind === 'dirt-block') {
@@ -736,11 +837,12 @@ export function renderGrid45Scene(
   ctx.strokeStyle = tileset ? 'rgba(36, 36, 36, 0.18)' : 'rgba(5, 8, 12, 0.28)'
   ctx.lineWidth = tileset ? 0.8 : 1
   for (const projected of projectedCells) {
+    if (!isMapCell(projected.cell)) continue
     strokeCell(ctx, projected.shape.outline)
   }
 
   if (options?.highlightCellId !== undefined && options.highlightCellId !== null) {
-    const highlightShape = projectedCells[options.highlightCellId]?.shape
+    const highlightShape = projectedCellById.get(options.highlightCellId)?.shape
     if (highlightShape) {
       ctx.strokeStyle = 'rgba(255, 209, 102, 0.9)'
       ctx.lineWidth = 2.5
@@ -748,8 +850,21 @@ export function renderGrid45Scene(
     }
   }
 
+  if (options?.previewCellId !== undefined && options.previewCellId !== null) {
+    const previewShape = projectedCellById.get(options.previewCellId)?.shape
+    if (previewShape) {
+      ctx.save()
+      fillCell(ctx, previewShape.outline, 'rgba(89, 207, 255, 0.12)')
+      ctx.strokeStyle = 'rgba(89, 207, 255, 0.92)'
+      ctx.lineWidth = 2
+      ctx.setLineDash([8, 5])
+      strokeCell(ctx, previewShape.outline)
+      ctx.restore()
+    }
+  }
+
   if (options?.showPlayer ?? true) {
-    const playerShape = projectedCells[state.playerCellId]?.shape
+    const playerShape = projectedCellById.get(state.playerCellId)?.shape
     if (playerShape && tileset) {
       const { minX, minY, maxX, maxY } = outlineBounds(playerShape.outline)
       const spriteSize = Math.max(36, Math.min(96, Math.min(maxX - minX, maxY - minY) * 0.42))

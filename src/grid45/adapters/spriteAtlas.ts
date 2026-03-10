@@ -137,6 +137,7 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       fire: drawTile(image, { col: 1, row: 5 }),
       dirt: drawTile(image, { col: 1, row: 12 }),
       gravel: drawTile(image, { col: 3, row: 14 }),
+      void: createCanvas(TILE_SIZE, TILE_SIZE),
     },
     features: {
       bomb: drawTile(image, { col: 3, row: 11 }),

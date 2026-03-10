@@ -2,7 +2,7 @@ import type { Vec2 } from '../../hyper/vec2'
 
 export type Direction = 'north' | 'east' | 'south' | 'west'
 export type MoveIntent = Direction | 'stay'
-export type CellKind = 'floor' | 'wall' | 'toggle-floor' | 'toggle-wall' | 'water' | 'fire' | 'dirt' | 'gravel'
+export type CellKind = 'floor' | 'wall' | 'toggle-floor' | 'toggle-wall' | 'water' | 'fire' | 'dirt' | 'gravel' | 'void'
 export const keyColors = ['blue', 'red', 'green', 'yellow'] as const
 export type KeyColor = (typeof keyColors)[number]
 export type CellFeature =
@@ -153,6 +153,7 @@ export function doorColorFromFeature(feature: CellFeature): KeyColor | null {
 }
 
 export function currentCellKind(kind: CellKind, togglePhase: boolean, terrainOverride?: CellKind): CellKind {
+  if (kind === 'void') return 'void'
   if (terrainOverride !== undefined) return terrainOverride
   if (kind === 'toggle-floor') return togglePhase ? 'toggle-wall' : 'toggle-floor'
   if (kind === 'toggle-wall') return togglePhase ? 'toggle-floor' : 'toggle-wall'
