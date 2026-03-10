@@ -1794,6 +1794,8 @@ export default function Grid45App() {
                     key={item.tool}
                     className={`grid45PaletteButton${editorLeftTool === item.tool ? ' grid45PaletteButtonLeft' : ''}${editorRightTool === item.tool ? ' grid45PaletteButtonRight' : ''}`}
                     type="button"
+                    title={item.label}
+                    aria-label={item.label}
                     onClick={() => assignEditorTool('left', item.tool)}
                     onContextMenu={(event) => {
                       event.preventDefault()
@@ -1801,7 +1803,6 @@ export default function Grid45App() {
                     }}
                   >
                     {paletteIcons[item.tool] ? <img className="grid45PaletteIcon" src={paletteIcons[item.tool]} alt="" /> : null}
-                    <span>{item.label}</span>
                     <span className="grid45PaletteAssignments">
                       {editorLeftTool === item.tool ? <span className="grid45PaletteBadge">L</span> : null}
                       {editorRightTool === item.tool ? <span className="grid45PaletteBadge grid45PaletteBadgeAlt">R</span> : null}
@@ -1819,7 +1820,7 @@ export default function Grid45App() {
                     <div className="grid45BrushSummary">
                       {control.icon ? <img className="grid45BrushPreview" src={control.icon} alt="" /> : null}
                       <div className="grid45BrushText">
-                        <span className="grid45BrushLabel">{control.label}</span>
+                        <span className="grid45BrushLabel">{control.label[0]}</span>
                         <span className="grid45BrushValue">{control.facing}</span>
                       </div>
                     </div>
