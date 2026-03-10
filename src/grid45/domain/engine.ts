@@ -154,7 +154,6 @@ function monsterCanEnterCell(
   playerCellId: number,
   occupiedCellIds: Set<number>,
 ): boolean {
-  if (targetId === playerCellId) return true
   if (occupiedCellIds.has(targetId)) return false
 
   const cell = state.world.cells[targetId]
@@ -169,6 +168,7 @@ function monsterCanEnterCell(
   if (keyColor !== null) return state.collectedKeyCellIds.has(targetId)
   if ((cell.feature === 'flippers' || cell.feature === 'fire-boots') && !pickupCollected(state, targetId)) return false
 
+  if (targetId === playerCellId) return true
   return cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || isBombActive(state, targetId)
 }
 
