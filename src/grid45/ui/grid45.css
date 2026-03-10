@@ -285,6 +285,41 @@ body {
   color: #f6efde;
 }
 
+.grid45MetricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.grid45MetricCard {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(241, 234, 216, 0.12);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.72);
+}
+
+.grid45MetricCardWide {
+  grid-column: 1 / -1;
+}
+
+.grid45MetricLabel {
+  color: rgba(241, 234, 216, 0.68);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.grid45MetricValue {
+  color: #f6efde;
+  font-size: 16px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .grid45InventoryGroup {
   margin-top: 10px;
 }
@@ -415,6 +450,46 @@ body {
   flex-wrap: wrap;
 }
 
+.grid45MonsterGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  flex: 1 0 100%;
+}
+
+.grid45MonsterCard {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(241, 234, 216, 0.12);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.72);
+}
+
+.grid45MonsterHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.grid45MonsterName {
+  color: rgba(241, 234, 216, 0.88);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid45MonsterCount {
+  color: #f6efde;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .grid45Palette {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -524,17 +599,20 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .grid45StepButton {
-  min-width: 38px;
+  min-width: 34px;
+  height: 34px;
   padding-inline: 0;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 
 .grid45Slider {
-  width: 132px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .grid45AntValue {
@@ -656,6 +734,11 @@ body {
   .grid45Hud,
   .grid45EditorPanel {
     top: 132px;
+  }
+
+  .grid45MetricGrid,
+  .grid45MonsterGrid {
+    grid-template-columns: 1fr;
   }
 
   .grid45DagPanel {

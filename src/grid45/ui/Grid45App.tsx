@@ -627,6 +627,23 @@ export default function Grid45App() {
             count: playtestSnapshot.remainingChipCellIds.size,
           },
         ]
+  const homeStatusMetrics = [
+    { label: 'Tick', value: String(playSnapshot.tick) },
+    { label: 'Exit', value: playSnapshot.levelComplete ? 'reached' : 'active' },
+    { label: 'Ants', value: String(antTotal) },
+    { label: 'Pink Balls', value: String(pinkBallTotal) },
+    { label: 'Teeth', value: String(teethTotal) },
+    { label: 'Tanks', value: String(tankTotal) },
+    { label: 'Move Lock', value: playSnapshot.recoveryTicks > 0 ? 'armed' : 'ready' },
+    { label: 'State', value: describeOutcome(playSnapshot), wide: true },
+    { label: 'Seed', value: String(playSnapshot.world.seed), wide: true },
+  ]
+  const monsterControls = [
+    { id: 'ants', label: 'Ants', value: antCount, setValue: setAntCount },
+    { id: 'pink-balls', label: 'Pink Balls', value: pinkBallCount, setValue: setPinkBallCount },
+    { id: 'teeth', label: 'Teeth', value: teethCount, setValue: setTeethCount },
+    { id: 'tanks', label: 'Tanks', value: tankCount, setValue: setTankCount },
+  ] as const
   const editorTotalCells = editorWorld.cells.length
   const editorMapCellCount = countEditorMapCells(editorWorld)
   const editorShrinkDelta = collectEditorBoundaryCellIds(editorWorld).length
@@ -1525,15 +1542,14 @@ export default function Grid45App() {
       {activeTab === 'play' ? (
         <div ref={hudRef} className="grid45Hud">
           <div className="grid45Eyebrow">Hyperbolic CC</div>
-          <div className="grid45Metrics">Tick {playSnapshot.tick}</div>
-          <div className="grid45Metrics">State: {describeOutcome(playSnapshot)}</div>
-          <div className="grid45Metrics">Ants: {antTotal}</div>
-          <div className="grid45Metrics">Pink Balls: {pinkBallTotal}</div>
-          <div className="grid45Metrics">Teeth: {teethTotal}</div>
-          <div className="grid45Metrics">Tanks: {tankTotal}</div>
-          <div className="grid45Metrics">Seed: {playSnapshot.world.seed}</div>
-          <div className="grid45Metrics">Exit: {playSnapshot.levelComplete ? 'reached' : 'active'}</div>
-          <div className="grid45Metrics">Move lock: {playSnapshot.recoveryTicks > 0 ? 'armed for next tick' : 'ready'}</div>
+          <div className="grid45MetricGrid">
+            {homeStatusMetrics.map((metric) => (
+              <div key={metric.label} className={`grid45MetricCard${metric.wide ? ' grid45MetricCardWide' : ''}`}>
+                <div className="grid45MetricLabel">{metric.label}</div>
+                <div className="grid45MetricValue">{metric.value}</div>
+              </div>
+            ))}
+          </div>
           {showDevToggle ? (
             <label className="grid45Toggle">
               <input
@@ -1581,90 +1597,41 @@ export default function Grid45App() {
                 onChange={(event) => setSeedInput(event.target.value)}
               />
             </label>
-            <label className="grid45SelectLabel grid45AntControl">
-              <span>Ants</span>
-              <div className="grid45AntRow">
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setAntCount((count) => Math.max(MIN_MONSTER_COUNT, count - 1))}>
-                  -
-                </button>
-                <input
-                  className="grid45Slider"
-                  type="range"
-                  min={MIN_MONSTER_COUNT}
-                  max={MAX_MONSTER_COUNT}
-                  step={1}
-                  value={antCount}
-                  onChange={(event) => setAntCount(Number(event.target.value))}
-                />
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setAntCount((count) => Math.min(MAX_MONSTER_COUNT, count + 1))}>
-                  +
-                </button>
-              </div>
-              <span className="grid45AntValue">{antCount}</span>
-            </label>
-            <label className="grid45SelectLabel grid45AntControl">
-              <span>Pink Balls</span>
-              <div className="grid45AntRow">
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setPinkBallCount((count) => Math.max(MIN_MONSTER_COUNT, count - 1))}>
-                  -
-                </button>
-                <input
-                  className="grid45Slider"
-                  type="range"
-                  min={MIN_MONSTER_COUNT}
-                  max={MAX_MONSTER_COUNT}
-                  step={1}
-                  value={pinkBallCount}
-                  onChange={(event) => setPinkBallCount(Number(event.target.value))}
-                />
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setPinkBallCount((count) => Math.min(MAX_MONSTER_COUNT, count + 1))}>
-                  +
-                </button>
-              </div>
-              <span className="grid45AntValue">{pinkBallCount}</span>
-            </label>
-            <label className="grid45SelectLabel grid45AntControl">
-              <span>Teeth</span>
-              <div className="grid45AntRow">
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setTeethCount((count) => Math.max(MIN_MONSTER_COUNT, count - 1))}>
-                  -
-                </button>
-                <input
-                  className="grid45Slider"
-                  type="range"
-                  min={MIN_MONSTER_COUNT}
-                  max={MAX_MONSTER_COUNT}
-                  step={1}
-                  value={teethCount}
-                  onChange={(event) => setTeethCount(Number(event.target.value))}
-                />
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setTeethCount((count) => Math.min(MAX_MONSTER_COUNT, count + 1))}>
-                  +
-                </button>
-              </div>
-              <span className="grid45AntValue">{teethCount}</span>
-            </label>
-            <label className="grid45SelectLabel grid45AntControl">
-              <span>Tanks</span>
-              <div className="grid45AntRow">
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setTankCount((count) => Math.max(MIN_MONSTER_COUNT, count - 1))}>
-                  -
-                </button>
-                <input
-                  className="grid45Slider"
-                  type="range"
-                  min={MIN_MONSTER_COUNT}
-                  max={MAX_MONSTER_COUNT}
-                  step={1}
-                  value={tankCount}
-                  onChange={(event) => setTankCount(Number(event.target.value))}
-                />
-                <button className="grid45Button grid45StepButton" type="button" onClick={() => setTankCount((count) => Math.min(MAX_MONSTER_COUNT, count + 1))}>
-                  +
-                </button>
-              </div>
-              <span className="grid45AntValue">{tankCount}</span>
-            </label>
+            <div className="grid45MonsterGrid">
+              {monsterControls.map((control) => (
+                <div key={control.id} className="grid45MonsterCard">
+                  <div className="grid45MonsterHeader">
+                    <span className="grid45MonsterName">{control.label}</span>
+                    <span className="grid45MonsterCount">{control.value}</span>
+                  </div>
+                  <div className="grid45AntRow">
+                    <button
+                      className="grid45Button grid45StepButton"
+                      type="button"
+                      onClick={() => control.setValue((count) => Math.max(MIN_MONSTER_COUNT, count - 1))}
+                    >
+                      -
+                    </button>
+                    <input
+                      className="grid45Slider"
+                      type="range"
+                      min={MIN_MONSTER_COUNT}
+                      max={MAX_MONSTER_COUNT}
+                      step={1}
+                      value={control.value}
+                      onChange={(event) => control.setValue(Number(event.target.value))}
+                    />
+                    <button
+                      className="grid45Button grid45StepButton"
+                      type="button"
+                      onClick={() => control.setValue((count) => Math.min(MAX_MONSTER_COUNT, count + 1))}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
             <button className="grid45Button" onClick={generateNewMap}>
               Generate Maze
             </button>
