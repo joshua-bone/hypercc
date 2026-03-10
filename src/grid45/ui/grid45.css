@@ -62,6 +62,12 @@ body {
   gap: 8px;
 }
 
+.grid45NavActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .grid45NavTab {
   padding: 10px 14px;
   border: 1px solid rgba(241, 234, 216, 0.16);
@@ -75,6 +81,100 @@ body {
 .grid45NavTabActive {
   border-color: rgba(255, 227, 157, 0.52);
   background: rgba(200, 169, 107, 0.18);
+}
+
+.grid45NavHelpButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(255, 227, 157, 0.32);
+  border-radius: 999px;
+  background: rgba(200, 169, 107, 0.18);
+  color: #ffe39d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.grid45NavHelpButton:hover {
+  background: rgba(200, 169, 107, 0.28);
+}
+
+.grid45NavHelpButton:focus-visible {
+  outline: 2px solid rgba(255, 227, 157, 0.92);
+  outline-offset: 2px;
+}
+
+.grid45HelpOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(5, 8, 12, 0.48);
+  backdrop-filter: blur(10px);
+}
+
+.grid45HelpModal {
+  width: min(720px, 100%);
+  max-height: min(78vh, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px 24px;
+  border: 1px solid rgba(241, 234, 216, 0.22);
+  border-radius: 22px;
+  background: rgba(9, 14, 20, 0.82);
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+
+.grid45HelpHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.grid45HelpTitle {
+  color: #f6efde;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  font-size: clamp(28px, 5vw, 42px);
+  font-weight: 700;
+}
+
+.grid45HelpClose {
+  flex: 0 0 auto;
+}
+
+.grid45HelpBody {
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.grid45HelpSection {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(241, 234, 216, 0.12);
+  border-radius: 16px;
+  background: rgba(12, 17, 23, 0.7);
+}
+
+.grid45HelpHeading {
+  color: #c8a96b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .grid45EndOverlay {
@@ -548,6 +648,11 @@ body {
     flex-direction: column;
   }
 
+  .grid45NavActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .grid45Hud,
   .grid45EditorPanel {
     top: 132px;
@@ -560,5 +665,19 @@ body {
     right: 16px;
     width: auto;
     max-height: 48vh;
+  }
+
+  .grid45HelpOverlay {
+    padding: 16px;
+  }
+
+  .grid45HelpModal {
+    max-height: calc(100vh - 32px);
+    padding: 18px;
+  }
+
+  .grid45HelpHeader {
+    align-items: start;
+    flex-direction: column;
   }
 }

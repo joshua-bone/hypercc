@@ -105,11 +105,13 @@ type EditorHistoryEntry = {
 
 type MiddleDragState = {
   pointerId: number
+  buttonMask: number
   lastX: number
   lastY: number
   moved: boolean
   startX: number
   startY: number
+  allowCenterOnRelease: boolean
 }
 
 type PaintDragState = {
@@ -264,6 +266,10 @@ function isUndoKey(event: KeyboardEvent): boolean {
   return !event.ctrlKey && !event.metaKey && !event.altKey && (event.key === 'z' || event.key === 'Z')
 }
 
+function isEditorModifierPan(event: ReactPointerEvent<HTMLCanvasElement>): boolean {
+  return event.button === 0 && (event.metaKey || event.ctrlKey)
+}
+
 function editorRotationDeltaFromKey(event: KeyboardEvent): -1 | 1 | null {
   if (event.code === 'Comma' || event.key === '<' || event.key === ',') return -1
   if (event.code === 'Period' || event.key === '>' || event.key === '.') return 1
@@ -279,6 +285,39 @@ function describeOutcome(snapshot: GameState): string {
   if (snapshot.lastOutcome === 'moved') return `moved ${snapshot.lastIntent}`
   if (snapshot.lastOutcome === 'blocked') return `blocked ${snapshot.lastIntent}`
   return 'standing by'
+}
+
+function HelpModal({
+  title,
+  sections,
+  onClose,
+}: {
+  title: string
+  sections: Array<{ heading: string; lines: string[] }>
+  onClose: () => void
+}) {
+  return (
+    <div className="grid45HelpOverlay" role="dialog" aria-modal="true" aria-labelledby="grid45HelpTitle" onClick={onClose}>
+      <div className="grid45HelpModal" onClick={(event) => event.stopPropagation()}>
+        <div className="grid45HelpHeader">
+          <div id="grid45HelpTitle" className="grid45HelpTitle">{title}</div>
+          <button className="grid45Button grid45HelpClose" type="button" onClick={onClose} aria-label="Close help">
+            Close
+          </button>
+        </div>
+        <div className="grid45HelpBody">
+          {sections.map((section) => (
+            <section key={section.heading} className="grid45HelpSection">
+              <div className="grid45HelpHeading">{section.heading}</div>
+              {section.lines.map((line) => (
+                <div key={line} className="grid45Line">{line}</div>
+              ))}
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function CircularInventoryRing({ frame, groups }: { frame: Grid45DiskFrame; groups: InventoryOrbitGroup[] }) {
@@ -501,6 +540,7 @@ export default function Grid45App() {
   const [editorCameraAngle, setEditorCameraAngle] = useState(0)
   const [editorSelectedCellId, setEditorSelectedCellId] = useState<number>(() => playSession.getSnapshot().world.startCellId)
   const [editorHoverCellId, setEditorHoverCellId] = useState<number | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [editorLeftTool, setEditorLeftTool] = useState<EditorPaintTool>('floor')
   const [editorRightTool, setEditorRightTool] = useState<EditorPaintTool>('wall')
   const [editorLeftMobFacing, setEditorLeftMobFacing] = useState<Direction>('north')
@@ -597,6 +637,65 @@ export default function Grid45App() {
   const editorPlaytestInstructionLine = stepModeEnabled
     ? 'Playtest step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Press ESC to return to the editor.'
     : 'Playtest running. Arrow keys or WASD move, Space starts time. Press ESC to return to the editor.'
+  const helpTitle = activeTab === 'play' ? 'Home Help' : playtestSnapshot ? 'Editor Playtest Help' : 'Editor Help'
+  const helpSections =
+    activeTab === 'play'
+      ? [
+          {
+            heading: 'Objective',
+            lines: [
+              'Collect every chip, pass through the socket, then reach the exit.',
+              'Monsters are placed randomly and may render maps unsolveable.',
+            ],
+          },
+          {
+            heading: 'Controls',
+            lines: [playInstructionLine],
+          },
+        ]
+      : playtestSnapshot
+        ? [
+            {
+              heading: 'Playtest',
+              lines: [
+                editorPlaytestInstructionLine,
+                'The Step Mode checkbox changes playtest controls only.',
+              ],
+            },
+          ]
+        : [
+            {
+              heading: 'Brushes',
+              lines: [
+                'Left click a palette item to assign the left brush. Right click a palette item to assign the right brush.',
+                'Left or right drag paints with the assigned brush.',
+              ],
+            },
+            {
+              heading: 'Map Editing',
+              lines: [
+                'Hover an adjacent outside cell to preview it. Painting there creates a new attached cell.',
+                'Shrink Map removes the current outer ring. Grow Map adds the next outer ring. Both actions can be undone.',
+              ],
+            },
+            {
+              heading: 'Camera',
+              lines: [
+                'Middle drag pans the editor camera.',
+                'Command-click drag or Control-click drag also pans the camera.',
+                'Double middle click centers the camera on a tile. Q and E orbit the camera.',
+              ],
+            },
+            {
+              heading: 'Playtest',
+              lines: [
+                'Playtest runs the current editor map. Step Mode only affects playtest controls.',
+                stepModeEnabled
+                  ? 'With Step Mode enabled, Arrow keys or WASD advance 2 ticks, Space advances 1 tick, and Z undoes.'
+                  : 'With Step Mode disabled, Arrow keys or WASD move and Space starts time.',
+              ],
+            },
+          ]
 
   const restoreEditorFrame = (entry: EditorHistoryEntry) => {
     editorCameraCenterRef.current = entry.cameraCenter
@@ -766,6 +865,28 @@ export default function Grid45App() {
   }, [])
 
   useEffect(() => {
+    if (!helpOpen) return
+
+    setEditorIntent('stay')
+    setEditorRotateIntent(0)
+    playSession.setIntent('stay')
+    playSession.stop()
+    playtestSession?.setIntent('stay')
+    playtestSession?.stop()
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setHelpOpen(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown, { passive: false })
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [helpOpen, playSession, playtestSession])
+
+  useEffect(() => {
     if (!tileset) return
     setPaletteIcons(createPaletteIconMap(tileset, 'north'))
   }, [tileset])
@@ -807,6 +928,8 @@ export default function Grid45App() {
   }, [activeTab, playtestSession])
 
   useEffect(() => {
+    if (helpOpen) return
+
     if (activeTab === 'play') {
       if (stepModeEnabled) {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -945,7 +1068,7 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeTab, playSession, playtestSession, playtestSnapshot, rotateSelectedEditorMob, showPlayEndOverlay, stepModeEnabled, undoEditor])
+  }, [activeTab, helpOpen, playSession, playtestSession, playtestSnapshot, rotateSelectedEditorMob, showPlayEndOverlay, stepModeEnabled, undoEditor])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -1211,6 +1334,22 @@ export default function Grid45App() {
     const hoverCellId = paintCellId !== null && editorWorld.cells[paintCellId]?.kind === 'void' ? paintCellId : null
 
     if (event.type === 'pointerdown') {
+      if (event.button === 1 || isEditorModifierPan(event)) {
+        event.preventDefault()
+        canvas.setPointerCapture(event.pointerId)
+        middleDragRef.current = {
+          pointerId: event.pointerId,
+          buttonMask: event.button === 1 ? 4 : 1,
+          lastX: event.clientX,
+          lastY: event.clientY,
+          moved: false,
+          startX: event.clientX,
+          startY: event.clientY,
+          allowCenterOnRelease: event.button === 1,
+        }
+        return
+      }
+
       if (event.button === 0 || event.button === 2) {
         event.preventDefault()
         canvas.setPointerCapture(event.pointerId)
@@ -1224,18 +1363,6 @@ export default function Grid45App() {
         return
       }
 
-      if (event.button === 1) {
-        event.preventDefault()
-        canvas.setPointerCapture(event.pointerId)
-        middleDragRef.current = {
-          pointerId: event.pointerId,
-          lastX: event.clientX,
-          lastY: event.clientY,
-          moved: false,
-          startX: event.clientX,
-          startY: event.clientY,
-        }
-      }
       return
     }
 
@@ -1252,7 +1379,7 @@ export default function Grid45App() {
       }
 
       const middleDrag = middleDragRef.current
-      if (middleDrag && middleDrag.pointerId === event.pointerId && (event.buttons & 4) === 4) {
+      if (middleDrag && middleDrag.pointerId === event.pointerId && (event.buttons & middleDrag.buttonMask) === middleDrag.buttonMask) {
         const dx = event.clientX - middleDrag.lastX
         const dy = event.clientY - middleDrag.lastY
         middleDrag.lastX = event.clientX
@@ -1273,7 +1400,7 @@ export default function Grid45App() {
 
       const middleDrag = middleDragRef.current
       if (middleDrag && middleDrag.pointerId === event.pointerId) {
-        if (!middleDrag.moved && activeCellId !== null) {
+        if (!middleDrag.moved && middleDrag.allowCenterOnRelease && activeCellId !== null) {
           const now = performance.now()
           const previous = middleClickRef.current
           if (
@@ -1306,20 +1433,25 @@ export default function Grid45App() {
     <div ref={appRef} className="grid45App">
       <div ref={navRef} className="grid45Nav">
         <div className="grid45NavBrand">Hyperbolic CC</div>
-        <div className="grid45NavTabs">
-          <button
-            className={`grid45NavTab${activeTab === 'play' ? ' grid45NavTabActive' : ''}`}
-            type="button"
-            onClick={() => setActiveTab('play')}
-          >
-            Home
-          </button>
-          <button
-            className={`grid45NavTab${activeTab === 'editor' ? ' grid45NavTabActive' : ''}`}
-            type="button"
-            onClick={() => setActiveTab('editor')}
-          >
-            Editor
+        <div className="grid45NavActions">
+          <div className="grid45NavTabs">
+            <button
+              className={`grid45NavTab${activeTab === 'play' ? ' grid45NavTabActive' : ''}`}
+              type="button"
+              onClick={() => setActiveTab('play')}
+            >
+              Home
+            </button>
+            <button
+              className={`grid45NavTab${activeTab === 'editor' ? ' grid45NavTabActive' : ''}`}
+              type="button"
+              onClick={() => setActiveTab('editor')}
+            >
+              Editor
+            </button>
+          </div>
+          <button className="grid45NavHelpButton" type="button" onClick={() => setHelpOpen(true)} aria-label="Open help">
+            ?
           </button>
         </div>
       </div>
@@ -1386,15 +1518,13 @@ export default function Grid45App() {
           </div>
         </div>
       ) : null}
+      {helpOpen ? <HelpModal title={helpTitle} sections={helpSections} onClose={() => setHelpOpen(false)} /> : null}
       {activeTab === 'play' && showDevToggle && showDagValidator ? <DagValidatorPanel ref={dagPanelRef} snapshot={playSnapshot} /> : null}
       {orbitFrame && orbitGroups.length > 0 ? <CircularInventoryRing frame={orbitFrame} groups={orbitGroups} /> : null}
 
       {activeTab === 'play' ? (
         <div ref={hudRef} className="grid45Hud">
           <div className="grid45Eyebrow">Hyperbolic CC</div>
-          <div className="grid45Line">Collect every chip, pass through the socket, then reach the exit.</div>
-          <div className="grid45Line">Monsters are placed randomly and may render maps unsolveable.</div>
-          <div className="grid45Line">{playInstructionLine}</div>
           <div className="grid45Metrics">Tick {playSnapshot.tick}</div>
           <div className="grid45Metrics">State: {describeOutcome(playSnapshot)}</div>
           <div className="grid45Metrics">Ants: {antTotal}</div>
@@ -1545,7 +1675,6 @@ export default function Grid45App() {
           <div className="grid45Eyebrow">Editor</div>
           {playtestSnapshot ? (
             <>
-              <div className="grid45Line">{editorPlaytestInstructionLine}</div>
               <div className="grid45Metrics">Tick: {playtestSnapshot.tick}</div>
               <div className="grid45Metrics">State: {describeOutcome(playtestSnapshot)}</div>
               <label className="grid45Toggle">
@@ -1573,9 +1702,6 @@ export default function Grid45App() {
             </>
           ) : (
             <>
-              <div className="grid45Line">
-                Left click palette sets the left brush, right click palette sets the right brush. Left or right drag paints. Middle drag pans. Double middle click centers on a tile. Hover just outside the boundary to preview and paint new cells.
-              </div>
               <label className="grid45Toggle">
                 <input
                   type="checkbox"
