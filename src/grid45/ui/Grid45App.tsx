@@ -635,8 +635,8 @@ export default function Grid45App() {
     { label: 'Teeth', value: String(teethTotal) },
     { label: 'Tanks', value: String(tankTotal) },
     { label: 'Move Lock', value: playSnapshot.recoveryTicks > 0 ? 'armed' : 'ready' },
-    { label: 'State', value: describeOutcome(playSnapshot), wide: true },
-    { label: 'Seed', value: String(playSnapshot.world.seed), wide: true },
+    { label: 'State', value: describeOutcome(playSnapshot) },
+    { label: 'Seed', value: String(playSnapshot.world.seed) },
   ]
   const monsterControls = [
     { id: 'ants', label: 'Ants', value: antCount, setValue: setAntCount },
@@ -1542,11 +1542,11 @@ export default function Grid45App() {
       {activeTab === 'play' ? (
         <div ref={hudRef} className="grid45Hud">
           <div className="grid45Eyebrow">Hyperbolic CC</div>
-          <div className="grid45MetricGrid">
+          <div className="grid45StatList">
             {homeStatusMetrics.map((metric) => (
-              <div key={metric.label} className={`grid45MetricCard${metric.wide ? ' grid45MetricCardWide' : ''}`}>
-                <div className="grid45MetricLabel">{metric.label}</div>
-                <div className="grid45MetricValue">{metric.value}</div>
+              <div key={metric.label} className="grid45StatItem">
+                <span className="grid45StatLabel">{metric.label}</span>
+                <span className="grid45StatValue">{metric.value}</span>
               </div>
             ))}
           </div>
@@ -1597,14 +1597,14 @@ export default function Grid45App() {
                 onChange={(event) => setSeedInput(event.target.value)}
               />
             </label>
-            <div className="grid45MonsterGrid">
+            <div className="grid45MonsterCompactGrid">
               {monsterControls.map((control) => (
-                <div key={control.id} className="grid45MonsterCard">
-                  <div className="grid45MonsterHeader">
+                <div key={control.id} className="grid45MonsterCompactItem">
+                  <div className="grid45MonsterCompactHeader">
                     <span className="grid45MonsterName">{control.label}</span>
                     <span className="grid45MonsterCount">{control.value}</span>
                   </div>
-                  <div className="grid45AntRow">
+                  <div className="grid45MonsterCompactControls">
                     <button
                       className="grid45Button grid45StepButton"
                       type="button"

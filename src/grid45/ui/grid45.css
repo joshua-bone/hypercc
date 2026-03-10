@@ -285,39 +285,38 @@ body {
   color: #f6efde;
 }
 
-.grid45MetricGrid {
+.grid45StatList {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 6px;
+  gap: 4px 14px;
+  margin-top: 2px;
 }
 
-.grid45MetricCard {
-  display: grid;
-  gap: 4px;
-  padding: 10px 12px;
-  border: 1px solid rgba(241, 234, 216, 0.12);
-  border-radius: 12px;
-  background: rgba(12, 17, 23, 0.72);
+.grid45StatItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 0;
 }
 
-.grid45MetricCardWide {
-  grid-column: 1 / -1;
-}
-
-.grid45MetricLabel {
-  color: rgba(241, 234, 216, 0.68);
+.grid45StatLabel {
+  color: rgba(241, 234, 216, 0.62);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.grid45MetricValue {
+.grid45StatValue {
   color: #f6efde;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.2;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .grid45InventoryGroup {
@@ -450,34 +449,37 @@ body {
   flex-wrap: wrap;
 }
 
-.grid45MonsterGrid {
+.grid45MonsterCompactGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px 12px;
   width: 100%;
   flex: 1 0 100%;
 }
 
-.grid45MonsterCard {
+.grid45MonsterCompactItem {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
-  padding: 10px 12px;
-  border: 1px solid rgba(241, 234, 216, 0.12);
-  border-radius: 12px;
-  background: rgba(12, 17, 23, 0.72);
 }
 
-.grid45MonsterHeader {
+.grid45MonsterCompactHeader {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
 }
 
+.grid45MonsterCompactControls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .grid45MonsterName {
-  color: rgba(241, 234, 216, 0.88);
-  font-size: 12px;
+  color: rgba(241, 234, 216, 0.82);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -485,7 +487,7 @@ body {
 
 .grid45MonsterCount {
   color: #f6efde;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1;
 }
@@ -603,10 +605,10 @@ body {
 }
 
 .grid45StepButton {
-  min-width: 34px;
-  height: 34px;
+  min-width: 28px;
+  height: 28px;
   padding-inline: 0;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
 }
 
@@ -736,8 +738,8 @@ body {
     top: 132px;
   }
 
-  .grid45MetricGrid,
-  .grid45MonsterGrid {
+  .grid45StatList,
+  .grid45MonsterCompactGrid {
     grid-template-columns: 1fr;
   }
 
