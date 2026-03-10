@@ -627,6 +627,48 @@ export default function Grid45App() {
             count: playtestSnapshot.remainingChipCellIds.size,
           },
         ]
+  const editorTotalCells = editorWorld.cells.length
+  const editorMapCellCount = countEditorMapCells(editorWorld)
+  const editorShrinkDelta = collectEditorBoundaryCellIds(editorWorld).length
+  const editorGrowDelta = collectEditorGrowCellIds(editorWorld).length
+  const leftBrushLabel = editorPalette.find((item) => item.tool === editorLeftTool)?.label ?? editorLeftTool
+  const rightBrushLabel = editorPalette.find((item) => item.tool === editorRightTool)?.label ?? editorRightTool
+  const editorStatusMetrics = [
+    { label: 'Seed', value: String(editorWorld.seed) },
+    { label: 'Cells', value: `${editorMapCellCount}/${editorTotalCells}` },
+    { label: 'Start', value: String(editorWorld.startCellId) },
+    { label: 'Selected', value: String(editorSelectedCellId) },
+    { label: 'Hover', value: editorHoverCellId === null ? '-' : String(editorHoverCellId) },
+    { label: 'Monsters', value: String(editorMonsterTotal) },
+    { label: 'Undo', value: String(editorHistory.length) },
+    { label: 'Brushes', value: `${leftBrushLabel} / ${rightBrushLabel}`, wide: true },
+  ]
+  const editorPlaytestMetrics = playtestSnapshot
+    ? [
+        { label: 'Tick', value: String(playtestSnapshot.tick) },
+        { label: 'State', value: describeOutcome(playtestSnapshot), wide: true },
+      ]
+    : []
+  const editorFacingControls = [
+    {
+      id: 'left',
+      label: 'Left',
+      tool: editorLeftTool,
+      facing: editorLeftMobFacing,
+      icon: iconForPaintTool(editorLeftTool, editorLeftMobFacing, paletteIcons, tileset),
+      onRotateLeft: () => setEditorLeftMobFacing((direction) => rotateDirection(direction, -1)),
+      onRotateRight: () => setEditorLeftMobFacing((direction) => rotateDirection(direction, 1)),
+    },
+    {
+      id: 'right',
+      label: 'Right',
+      tool: editorRightTool,
+      facing: editorRightMobFacing,
+      icon: iconForPaintTool(editorRightTool, editorRightMobFacing, paletteIcons, tileset),
+      onRotateLeft: () => setEditorRightMobFacing((direction) => rotateDirection(direction, -1)),
+      onRotateRight: () => setEditorRightMobFacing((direction) => rotateDirection(direction, 1)),
+    },
+  ] as const
   const homeStatusMetrics = [
     { label: 'Tick', value: String(playSnapshot.tick) },
     { label: 'Exit', value: playSnapshot.levelComplete ? 'reached' : 'active' },
@@ -644,10 +686,6 @@ export default function Grid45App() {
     { id: 'teeth', label: 'Teeth', value: teethCount, setValue: setTeethCount },
     { id: 'tanks', label: 'Tanks', value: tankCount, setValue: setTankCount },
   ] as const
-  const editorTotalCells = editorWorld.cells.length
-  const editorMapCellCount = countEditorMapCells(editorWorld)
-  const editorShrinkDelta = collectEditorBoundaryCellIds(editorWorld).length
-  const editorGrowDelta = collectEditorGrowCellIds(editorWorld).length
   const playInstructionLine = stepModeEnabled
     ? 'Step mode: Arrow keys or WASD advance 2 ticks, Space advances 1 tick, Z undoes. Restart replays this maze; Generate builds a new one.'
     : 'Arrow keys or WASD move. Space starts time. Restart replays this maze; Generate builds a new one.'
@@ -1642,9 +1680,15 @@ export default function Grid45App() {
           <div className="grid45Eyebrow">Editor</div>
           {playtestSnapshot ? (
             <>
-              <div className="grid45Metrics">Tick: {playtestSnapshot.tick}</div>
-              <div className="grid45Metrics">State: {describeOutcome(playtestSnapshot)}</div>
-              <label className="grid45Toggle">
+              <div className="grid45StatList grid45StatListEditor">
+                {editorPlaytestMetrics.map((metric) => (
+                  <div key={metric.label} className={`grid45StatItem${metric.wide ? ' grid45StatItemWide' : ''}`}>
+                    <span className="grid45StatLabel">{metric.label}</span>
+                    <span className="grid45StatValue">{metric.value}</span>
+                  </div>
+                ))}
+              </div>
+              <label className="grid45Toggle grid45ToggleCompact">
                 <input
                   type="checkbox"
                   checked={stepModeEnabled}
@@ -1652,9 +1696,9 @@ export default function Grid45App() {
                 />
                 <span>Step Mode</span>
               </label>
-              <div className="grid45Controls">
+              <div className="grid45EditorActionGrid">
                 <button
-                  className="grid45Button"
+                  className="grid45Button grid45ButtonCompact grid45ButtonPrimary"
                   type="button"
                   onClick={() => {
                     if (!playtestSession) return
@@ -1669,7 +1713,7 @@ export default function Grid45App() {
             </>
           ) : (
             <>
-              <label className="grid45Toggle">
+              <label className="grid45Toggle grid45ToggleCompact">
                 <input
                   type="checkbox"
                   checked={stepModeEnabled}
@@ -1677,41 +1721,39 @@ export default function Grid45App() {
                 />
                 <span>Step Mode for Playtest</span>
               </label>
-              <div className="grid45Metrics">Seed: {editorWorld.seed}</div>
-              <div className="grid45Metrics">Map Cells: {editorMapCellCount} / {editorTotalCells}</div>
-              <div className="grid45Metrics">Start Cell: {editorWorld.startCellId}</div>
-              <div className="grid45Metrics">Selected Cell: {editorSelectedCellId}</div>
-              <div className="grid45Metrics">Preview Cell: {editorHoverCellId ?? '-'}</div>
-              <div className="grid45Metrics">Monsters: {editorMonsterTotal}</div>
-              <div className="grid45Metrics">Undo: {editorHistory.length}</div>
-              <div className="grid45Metrics">Left Brush: {editorLeftTool}</div>
-              <div className="grid45Metrics">Right Brush: {editorRightTool}</div>
-              <div className="grid45Metrics">Mode: Edit</div>
-              <div className="grid45Controls">
-                <button className="grid45Button grid45ButtonPrimary" type="button" onClick={startEditorPlaytest}>
+              <div className="grid45StatList grid45StatListEditor">
+                {editorStatusMetrics.map((metric) => (
+                  <div key={metric.label} className={`grid45StatItem${metric.wide ? ' grid45StatItemWide' : ''}`}>
+                    <span className="grid45StatLabel">{metric.label}</span>
+                    <span className="grid45StatValue">{metric.value}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="grid45EditorActionGrid">
+                <button className="grid45Button grid45ButtonCompact grid45ButtonPrimary" type="button" onClick={startEditorPlaytest}>
                   Playtest
                 </button>
-                <button className="grid45Button" type="button" onClick={undoEditor} disabled={editorHistory.length === 0}>
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={undoEditor} disabled={editorHistory.length === 0}>
                   Undo
                 </button>
-                <button className="grid45Button" type="button" onClick={clearCurrentEditorMap}>
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={clearCurrentEditorMap}>
                   Clear Map
                 </button>
                 <button
-                  className="grid45Button"
+                  className="grid45Button grid45ButtonCompact"
                   type="button"
                   onClick={shrinkCurrentEditorMap}
                   disabled={editorShrinkDelta === 0 || editorShrinkDelta >= editorMapCellCount}
                 >
                   {`Shrink Map (-${editorShrinkDelta})`}
                 </button>
-                <button className="grid45Button" type="button" onClick={growCurrentEditorMap} disabled={editorGrowDelta === 0}>
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={growCurrentEditorMap} disabled={editorGrowDelta === 0}>
                   {`Grow Map (+${editorGrowDelta})`}
                 </button>
-                <label className="grid45SelectLabel">
-                  <span>Blank Size</span>
+                <label className="grid45SelectLabel grid45CompactField">
+                  <span>Blank</span>
                   <select
-                    className="grid45Select"
+                    className="grid45Select grid45SelectCompact"
                     value={editorBlankSize}
                     onChange={(event) => setEditorBlankSize(event.target.value as WorldSize)}
                   >
@@ -1722,14 +1764,14 @@ export default function Grid45App() {
                     ))}
                   </select>
                 </label>
-                <button className="grid45Button" type="button" onClick={createNewBlankEditorMap}>
-                  New Blank Map
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={createNewBlankEditorMap}>
+                  New Blank
                 </button>
-                <button className="grid45Button" type="button" onClick={() => downloadWorldJson(editorWorld)}>
-                  Download JSON
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={() => downloadWorldJson(editorWorld)}>
+                  Download
                 </button>
                 <button
-                  className="grid45Button"
+                  className="grid45Button grid45ButtonCompact"
                   type="button"
                   onClick={() => {
                     const nextWorld = cloneMazeWorld(playSnapshot.world)
@@ -1743,10 +1785,10 @@ export default function Grid45App() {
                     setEditorCameraAngle(0)
                   }}
                 >
-                  Use Current Play Map
+                  Use Play Map
                 </button>
               </div>
-              <div className="grid45Palette">
+              <div className="grid45Palette grid45PaletteCompact">
                 {editorPalette.map((item) => (
                   <button
                     key={item.tool}
@@ -1771,49 +1813,36 @@ export default function Grid45App() {
           )}
           {!playtestSnapshot ? (
             <>
-              <div className="grid45Controls">
-                {iconForPaintTool(editorLeftTool, editorLeftMobFacing, paletteIcons, tileset) ? (
-                  <img className="grid45FacingPreview" src={iconForPaintTool(editorLeftTool, editorLeftMobFacing, paletteIcons, tileset)} alt="" />
-                ) : null}
-                <div className="grid45Metrics">Left Facing: {editorLeftMobFacing}</div>
-                <button
-                  className="grid45Button grid45StepButton"
-                  type="button"
-                  onClick={() => setEditorLeftMobFacing((direction) => rotateDirection(direction, -1))}
-                  disabled={!isMobTool(editorLeftTool)}
-                >
-                  ↺
-                </button>
-                <button
-                  className="grid45Button grid45StepButton"
-                  type="button"
-                  onClick={() => setEditorLeftMobFacing((direction) => rotateDirection(direction, 1))}
-                  disabled={!isMobTool(editorLeftTool)}
-                >
-                  ↻
-                </button>
-              </div>
-              <div className="grid45Controls">
-                {iconForPaintTool(editorRightTool, editorRightMobFacing, paletteIcons, tileset) ? (
-                  <img className="grid45FacingPreview" src={iconForPaintTool(editorRightTool, editorRightMobFacing, paletteIcons, tileset)} alt="" />
-                ) : null}
-                <div className="grid45Metrics">Right Facing: {editorRightMobFacing}</div>
-                <button
-                  className="grid45Button grid45StepButton"
-                  type="button"
-                  onClick={() => setEditorRightMobFacing((direction) => rotateDirection(direction, -1))}
-                  disabled={!isMobTool(editorRightTool)}
-                >
-                  ↺
-                </button>
-                <button
-                  className="grid45Button grid45StepButton"
-                  type="button"
-                  onClick={() => setEditorRightMobFacing((direction) => rotateDirection(direction, 1))}
-                  disabled={!isMobTool(editorRightTool)}
-                >
-                  ↻
-                </button>
+              <div className="grid45BrushGrid">
+                {editorFacingControls.map((control) => (
+                  <div key={control.id} className="grid45BrushStrip">
+                    <div className="grid45BrushSummary">
+                      {control.icon ? <img className="grid45BrushPreview" src={control.icon} alt="" /> : null}
+                      <div className="grid45BrushText">
+                        <span className="grid45BrushLabel">{control.label}</span>
+                        <span className="grid45BrushValue">{control.facing}</span>
+                      </div>
+                    </div>
+                    <div className="grid45BrushButtons">
+                      <button
+                        className="grid45Button grid45ButtonCompact grid45StepButton"
+                        type="button"
+                        onClick={control.onRotateLeft}
+                        disabled={!isMobTool(control.tool)}
+                      >
+                        ↺
+                      </button>
+                      <button
+                        className="grid45Button grid45ButtonCompact grid45StepButton"
+                        type="button"
+                        onClick={control.onRotateRight}
+                        disabled={!isMobTool(control.tool)}
+                      >
+                        ↻
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           ) : null}
