@@ -16,6 +16,7 @@ type ProjectedOutline = ScreenPoint[][]
 type ProjectedShape = {
   outline: ProjectedOutline
   corners: ScreenPoint[]
+  textureCorners: [ScreenPoint, ScreenPoint, ScreenPoint, ScreenPoint]
 }
 
 type ProjectedCell = {
@@ -91,7 +92,11 @@ function projectCellShape(
     })
   })
 
-  return { outline, corners }
+  return {
+    outline,
+    corners,
+    textureCorners: orientedTextureCorners(cell, corners),
+  }
 }
 
 function traceProjectedPath(ctx: CanvasRenderingContext2D, outline: ProjectedOutline): void {
@@ -121,6 +126,43 @@ function outlinePolygon(outline: ProjectedOutline): ScreenPoint[] {
     }
   }
   return polygon
+}
+
+function sharedVertexIndexForSides(sideA: number, sideB: number, vertexCount: number): number | null {
+  const verticesA = [sideA, (sideA + 1) % vertexCount]
+  const verticesB = [sideB, (sideB + 1) % vertexCount]
+  for (const vertexIndex of verticesA) {
+    if (verticesB.includes(vertexIndex)) return vertexIndex
+  }
+  return null
+}
+
+function orientedTextureCorners(
+  cell: MazeCell,
+  projectedCorners: ScreenPoint[],
+): [ScreenPoint, ScreenPoint, ScreenPoint, ScreenPoint] {
+  const directionSides = assignDirectionSides(cell.vertices, cell.center)
+  const vertexCount = projectedCorners.length
+  const nwIndex = sharedVertexIndexForSides(directionSides.west, directionSides.north, vertexCount)
+  const neIndex = sharedVertexIndexForSides(directionSides.north, directionSides.east, vertexCount)
+  const seIndex = sharedVertexIndexForSides(directionSides.east, directionSides.south, vertexCount)
+  const swIndex = sharedVertexIndexForSides(directionSides.south, directionSides.west, vertexCount)
+
+  if (nwIndex === null || neIndex === null || seIndex === null || swIndex === null) {
+    return [
+      projectedCorners[0],
+      projectedCorners[1],
+      projectedCorners[2],
+      projectedCorners[3],
+    ]
+  }
+
+  return [
+    projectedCorners[nwIndex],
+    projectedCorners[neIndex],
+    projectedCorners[seIndex],
+    projectedCorners[swIndex],
+  ]
 }
 
 function pointInPolygon(point: ScreenPoint, polygon: ScreenPoint[]): boolean {
@@ -496,7 +538,7 @@ function drawCellSprite(
   shape: ProjectedShape,
   sprite: CanvasImageSource,
 ): void {
-  const { outline, corners } = shape
+  const { outline, textureCorners } = shape
   const { minX, minY, maxX, maxY } = outlineBounds(outline)
   const maxDimension = Math.max(maxX - minX, maxY - minY)
   const subdivisions = Math.max(2, Math.min(4, Math.ceil(maxDimension / 84)))
@@ -505,12 +547,12 @@ function drawCellSprite(
 
   const bilerp = (u: number, v: number): ScreenPoint => {
     const top = {
-      x: corners[0].x * (1 - u) + corners[1].x * u,
-      y: corners[0].y * (1 - u) + corners[1].y * u,
+      x: textureCorners[0].x * (1 - u) + textureCorners[1].x * u,
+      y: textureCorners[0].y * (1 - u) + textureCorners[1].y * u,
     }
     const bottom = {
-      x: corners[3].x * (1 - u) + corners[2].x * u,
-      y: corners[3].y * (1 - u) + corners[2].y * u,
+      x: textureCorners[3].x * (1 - u) + textureCorners[2].x * u,
+      y: textureCorners[3].y * (1 - u) + textureCorners[2].y * u,
     }
 
     return {
