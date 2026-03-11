@@ -8,7 +8,7 @@ import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { directionFromKey } from '../domain/directions'
 import { createInitialGameState } from '../domain/engine'
 import { loadMazeWorldFromJson } from '../domain/levelCodec'
-import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
+import { keyColors, type Direction, type GameState, type KeyColor, type MazeCell, type MazeWorld, type MoveIntent } from '../domain/model'
 import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTankCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
 import {
   canPaintEditorBoundaryCell,
@@ -22,11 +22,14 @@ import {
   growEditorWorld,
   nearestCellIdToPoint,
   normalizeEditorWorld,
+  paintEditorRegion,
   paintEditorWorld,
+  previewEditorRegionPaint,
   rotateDirection,
   rotateEditorMobAtCell,
   shrinkEditorWorld,
   type EditorPaintTool,
+  type EditorRegionPaintMode,
 } from './editorHelpers'
 import type { Vec2 } from '../../hyper/vec2'
 
@@ -126,6 +129,15 @@ type PaintDragState = {
 type EditorIoStatus = {
   tone: 'info' | 'error'
   text: string
+}
+
+type EditorHoverPreviewState = {
+  previewCellIds: number[]
+  previewCells: MazeCell[]
+  cursorX: number
+  cursorY: number
+  newCellCount: number
+  changedCellCount: number
 }
 
 type PaletteIconMap = Partial<Record<EditorPaintTool, string>>
@@ -276,7 +288,12 @@ function isUndoKey(event: KeyboardEvent): boolean {
 }
 
 function isEditorModifierPan(event: ReactPointerEvent<HTMLCanvasElement>): boolean {
-  return event.button === 0 && (event.metaKey || event.ctrlKey)
+  return event.button === 0 && !event.shiftKey && (event.metaKey || event.ctrlKey)
+}
+
+function editorRegionPaintModeFromPointer(event: ReactPointerEvent<HTMLCanvasElement>): EditorRegionPaintMode | null {
+  if (!event.shiftKey) return null
+  return event.metaKey || event.ctrlKey ? 'overwrite' : 'expand'
 }
 
 function editorRotationDeltaFromKey(event: KeyboardEvent): -1 | 1 | null {
@@ -734,6 +751,7 @@ export default function Grid45App() {
   const [editorCameraAngle, setEditorCameraAngle] = useState(0)
   const [editorSelectedCellId, setEditorSelectedCellId] = useState<number>(() => playSession.getSnapshot().world.startCellId)
   const [editorHoverCellId, setEditorHoverCellId] = useState<number | null>(null)
+  const [editorHoverPreview, setEditorHoverPreview] = useState<EditorHoverPreviewState | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [editorLeftTool, setEditorLeftTool] = useState<EditorPaintTool>('floor')
   const [editorRightTool, setEditorRightTool] = useState<EditorPaintTool>('wall')
@@ -757,6 +775,10 @@ export default function Grid45App() {
     hintSnapshot && hintSnapshot.world.cells[hintSnapshot.playerCellId]?.feature === 'hint'
       ? hintSnapshot.world.hint?.trim() ?? ''
       : ''
+  const clearEditorHover = () => {
+    setEditorHoverCellId(null)
+    setEditorHoverPreview(null)
+  }
   const chipsRemaining = playSnapshot.remainingChipCellIds.size
   const antTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'ant').length
   const pinkBallTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
@@ -933,6 +955,7 @@ export default function Grid45App() {
               heading: 'Map Editing',
               lines: [
                 'Hover an adjacent outside cell to preview it. Painting there creates a new attached cell.',
+                'Shift previews the outer border of a same-terrain region. Command-Shift or Control-Shift previews the full border, including existing cells.',
                 'Shrink Map removes the current outer ring. Grow Map adds the next outer ring. Both actions can be undone.',
                 'Load JSON from the sidebar or drop it onto the game disk.',
                 'The Remove Cell brush erases a cell from the active map entirely.',
@@ -963,7 +986,7 @@ export default function Grid45App() {
     editorCameraAngleRef.current = entry.cameraAngle
     setEditorWorld(entry.world)
     setEditorSelectedCellId(entry.selectedCellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorCameraCenter(entry.cameraCenter)
     setEditorCameraAngle(entry.cameraAngle)
   }
@@ -994,7 +1017,7 @@ export default function Grid45App() {
     if (!center) return
     editorCameraCenterRef.current = center
     setEditorSelectedCellId(cellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorCameraCenter(center)
   }
 
@@ -1028,7 +1051,7 @@ export default function Grid45App() {
     editorCameraAngleRef.current = 0
     setEditorWorld(nextWorld)
     setEditorSelectedCellId(nextWorld.startCellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorCameraCenter(nextCenter)
     setEditorCameraAngle(0)
   }
@@ -1121,7 +1144,12 @@ export default function Grid45App() {
       options.cameraCenter = editorCameraCenter
       options.cameraAngle = editorCameraAngle
       options.highlightCellId = editorSelectedCellId
-      options.previewCellId = editorHoverCellId
+      if (editorHoverPreview) {
+        options.previewCellIds = editorHoverPreview.previewCellIds
+        options.previewCells = editorHoverPreview.previewCells
+      } else if (editorHoverCellId !== null && editorWorld.cells[editorHoverCellId]?.kind === 'void') {
+        options.previewCellId = editorHoverCellId
+      }
     }
 
     return options
@@ -1415,11 +1443,11 @@ export default function Grid45App() {
       drawRef.current = null
       window.removeEventListener('resize', render)
     }
-  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
+  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorHoverPreview, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
 
   useEffect(() => {
     drawRef.current?.()
-  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
+  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorHoverPreview, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
 
   useEffect(() => {
     if (!showPlayEndOverlay) return
@@ -1494,7 +1522,7 @@ export default function Grid45App() {
       editorCameraAngleRef.current = nextAngle
       setEditorCameraCenter(nextCenter)
       setEditorCameraAngle(nextAngle)
-      setEditorHoverCellId(null)
+      clearEditorHover()
       setEditorSelectedCellId(nearestCellIdToPoint(editorWorld, nextCenter))
       frameId = window.requestAnimationFrame(step)
     }
@@ -1514,7 +1542,7 @@ export default function Grid45App() {
     if (playtestSession) return
     const normalizedWorld = cloneMazeWorld(editorWorld)
     setEditorWorld(normalizedWorld)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setPlaytestSession(createPlaytestSession(normalizedWorld))
     setPlaytestSnapshot(null)
   }
@@ -1527,7 +1555,7 @@ export default function Grid45App() {
     editorCameraAngleRef.current = 0
     setEditorWorld(clearedWorld)
     setEditorSelectedCellId(clearedWorld.startCellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorCameraCenter(clearedCenter)
     setEditorCameraAngle(0)
   }
@@ -1549,7 +1577,7 @@ export default function Grid45App() {
     editorCameraAngleRef.current = 0
     setEditorWorld(clearedWorld)
     setEditorSelectedCellId(clearedWorld.startCellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorCameraCenter(clearedCenter)
     setEditorCameraAngle(0)
   }
@@ -1565,7 +1593,7 @@ export default function Grid45App() {
     )
     setEditorWorld(nextWorld)
     setEditorSelectedCellId(nextSelectedCellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
   }
 
   const growCurrentEditorMap = () => {
@@ -1579,7 +1607,7 @@ export default function Grid45App() {
     )
     setEditorWorld(nextWorld)
     setEditorSelectedCellId(nextSelectedCellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
   }
 
   const paintSelectedCell = (cellId: number, paintButton: 'left' | 'right', includeUndo = false) => {
@@ -1588,7 +1616,7 @@ export default function Grid45App() {
     if (includeUndo) pushEditorUndo()
     const facing = paintButton === 'left' ? editorLeftMobFacing : editorRightMobFacing
     setEditorSelectedCellId(cellId)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorWorld((world) => paintEditorWorld(world, cellId, tool, facing))
     if (tool === 'start') {
       const center = editorWorld.cells[cellId]?.center
@@ -1597,6 +1625,19 @@ export default function Grid45App() {
         setEditorCameraCenter(center)
       }
     }
+  }
+
+  const paintSelectedRegion = (cellId: number, paintButton: 'left' | 'right', mode: EditorRegionPaintMode) => {
+    const preview = previewEditorRegionPaint(editorWorld, cellId, mode)
+    if (!preview || preview.targets.length === 0) return
+
+    const tool = paintButton === 'left' ? editorLeftTool : editorRightTool
+    if (tool === 'none' && preview.changedCellCount === 0) return
+    pushEditorUndo()
+    const facing = paintButton === 'left' ? editorLeftMobFacing : editorRightMobFacing
+    setEditorSelectedCellId(cellId)
+    clearEditorHover()
+    setEditorWorld((world) => paintEditorRegion(world, cellId, mode, tool, facing))
   }
 
   const updateEditorCameraFromDrag = (deltaX: number, deltaY: number, rect: DOMRect) => {
@@ -1612,7 +1653,7 @@ export default function Grid45App() {
 
     editorCameraCenterRef.current = nextCenter
     setEditorCameraCenter(nextCenter)
-    setEditorHoverCellId(null)
+    clearEditorHover()
     setEditorSelectedCellId(nearestCellIdToPoint(editorWorld, nextCenter))
   }
 
@@ -1707,7 +1748,23 @@ export default function Grid45App() {
     const paintCellId =
       activeCellId ??
       (boundaryCellId !== null && canPaintEditorBoundaryCell(editorWorld, boundaryCellId) ? boundaryCellId : null)
-    const hoverCellId = paintCellId !== null && editorWorld.cells[paintCellId]?.kind === 'void' ? paintCellId : null
+    const regionPaintMode = editorRegionPaintModeFromPointer(event)
+    const regionPaintPreview =
+      regionPaintMode !== null && activeCellId !== null
+        ? previewEditorRegionPaint(editorWorld, activeCellId, regionPaintMode)
+        : null
+    const hoverCellId = paintCellId
+    const hoverPreview =
+      regionPaintPreview && regionPaintPreview.targets.length > 0
+        ? {
+            previewCellIds: regionPaintPreview.targets.map((target) => target.cell.id),
+            previewCells: regionPaintPreview.targets.filter((target) => !target.existsInWorld).map((target) => target.cell),
+            cursorX: Math.max(12, Math.min(rect.width - 132, event.clientX - rect.left + 16)),
+            cursorY: Math.max(18, Math.min(rect.height - 18, event.clientY - rect.top - 18)),
+            newCellCount: regionPaintPreview.newCellCount,
+            changedCellCount: regionPaintPreview.changedCellCount,
+          }
+        : null
 
     if (event.type === 'pointerdown') {
       if (event.button === 1 || isEditorModifierPan(event)) {
@@ -1728,8 +1785,12 @@ export default function Grid45App() {
 
       if (event.button === 0 || event.button === 2) {
         event.preventDefault()
-        canvas.setPointerCapture(event.pointerId)
         const paintButton = event.button === 0 ? 'left' : 'right'
+        if (regionPaintMode !== null && activeCellId !== null) {
+          paintSelectedRegion(activeCellId, paintButton, regionPaintMode)
+          return
+        }
+        canvas.setPointerCapture(event.pointerId)
         paintDragRef.current = {
           pointerId: event.pointerId,
           paintButton,
@@ -1744,6 +1805,7 @@ export default function Grid45App() {
 
     if (event.type === 'pointermove') {
       setEditorHoverCellId(hoverCellId)
+      setEditorHoverPreview(hoverPreview)
       const paintDrag = paintDragRef.current
       const isLeftPainting = paintDrag?.paintButton === 'left' && (event.buttons & 1) === 1
       const isRightPainting = paintDrag?.paintButton === 'right' && (event.buttons & 2) === 2
@@ -1801,7 +1863,7 @@ export default function Grid45App() {
       if (canvas.hasPointerCapture(event.pointerId)) {
         canvas.releasePointerCapture(event.pointerId)
       }
-      if (event.type === 'pointercancel') setEditorHoverCellId(null)
+      if (event.type === 'pointercancel') clearEditorHover()
     }
   }
 
@@ -1843,7 +1905,7 @@ export default function Grid45App() {
         onDragLeave={handleEditorFileDragLeave}
         onDrop={handleEditorFileDrop}
         onPointerLeave={() => {
-          if (activeTab === 'editor') setEditorHoverCellId(null)
+          if (activeTab === 'editor') clearEditorHover()
         }}
         onAuxClick={(event) => {
           if (activeTab === 'editor') event.preventDefault()
@@ -1852,6 +1914,19 @@ export default function Grid45App() {
           if (activeTab === 'editor') event.preventDefault()
         }}
       />
+      {activeTab === 'editor' && playtestSnapshot === null && editorHoverPreview ? (
+        <div
+          className="grid45EditorPreviewBadge"
+          aria-hidden="true"
+          style={{
+            left: editorHoverPreview.cursorX,
+            top: editorHoverPreview.cursorY,
+          }}
+        >
+          <span className="grid45EditorPreviewBadgeCount">{`+${editorHoverPreview.newCellCount}`}</span>
+          <span className="grid45EditorPreviewBadgeCount">{`\u0394${editorHoverPreview.changedCellCount}`}</span>
+        </div>
+      ) : null}
       {editorDropFrame && activeTab === 'editor' && playtestSnapshot === null ? (
         <div
           className="grid45DropHint"
@@ -2167,7 +2242,7 @@ export default function Grid45App() {
                     setEditorWorld(nextWorld)
                     setEditorCameraCenter(nextWorld.cells[nextWorld.startCellId].center)
                     setEditorSelectedCellId(nextWorld.startCellId)
-                    setEditorHoverCellId(null)
+                    clearEditorHover()
                     setEditorCameraAngle(0)
                   }}
                 >

@@ -55,6 +55,30 @@ body {
   text-transform: uppercase;
 }
 
+.grid45EditorPreviewBadge {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid rgba(89, 207, 255, 0.34);
+  border-radius: 999px;
+  background: rgba(7, 11, 15, 0.86);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+  color: #d8eef8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.grid45EditorPreviewBadgeCount {
+  opacity: 0.94;
+}
+
 .grid45Nav {
   position: absolute;
   top: 16px;

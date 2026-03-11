@@ -8,6 +8,20 @@ import { directions } from '../domain/directions'
 type PaintableCellKind = Exclude<CellKind, 'void'>
 
 export type EditorPaintTool = PaintableCellKind | 'start' | CellFeature | MonsterKind
+export type EditorRegionPaintMode = 'expand' | 'overwrite'
+export type EditorRegionPaintTarget = {
+  cell: MazeCell
+  geometryKey: string
+  distance: number
+  existsInWorld: boolean
+  isMapInWorld: boolean
+}
+export type EditorRegionPaintPreview = {
+  anchorCellId: number
+  targets: EditorRegionPaintTarget[]
+  newCellCount: number
+  changedCellCount: number
+}
 
 const customAreaDag: AreaDag = {
   nodes: [],
@@ -61,45 +75,196 @@ function hasAdjacentMapCell(world: MazeWorld, cellId: number): boolean {
   })
 }
 
-function ensureEditorBoundaryShell(world: MazeWorld): void {
+function ensureEditorShell(
+  world: MazeWorld,
+  sourceCellIds: Iterable<number>,
+  depth: number,
+): { cellIdByGeometryKey: Map<string, number>; visitedCellIds: Set<number> } {
   const cellIdByGeometryKey = new Map<string, number>(world.cells.map((cell) => [grid45CellGeometryKey(cell.center), cell.id]))
-  const mapCellIds = world.cells.filter((cell) => isMapCell(cell)).map((cell) => cell.id)
+  let frontier = Array.from(new Set(Array.from(sourceCellIds).filter((cellId) => !!world.cells[cellId])))
+  const visitedCellIds = new Set<number>(frontier)
 
-  for (const cellId of mapCellIds) {
-    const cell = world.cells[cellId]
-    for (const direction of directions) {
-      const existingNeighborId = cell.exits[direction]
-      if (existingNeighborId !== null && world.cells[existingNeighborId]) continue
+  for (let step = 0; step < depth; step += 1) {
+    const nextFrontier: number[] = []
 
-      const geometry = reflectGrid45CellGeometry(cell, direction)
-      const geometryKey = grid45CellGeometryKey(geometry.center)
-      let neighborId = cellIdByGeometryKey.get(geometryKey)
+    for (const cellId of frontier) {
+      const cell = world.cells[cellId]
+      if (!cell) continue
 
-      if (neighborId === undefined) {
-        neighborId = world.cells.length
-        world.cells.push({
-          id: neighborId,
-          kind: 'void',
-          feature: 'none',
-          center: geometry.center,
-          vertices: geometry.vertices,
-          exits: {
-            north: null,
-            east: null,
-            south: null,
-            west: null,
-          },
-        })
-        cellIdByGeometryKey.set(geometryKey, neighborId)
-      }
+      for (const direction of directions) {
+        let neighborId = cell.exits[direction]
 
-      cell.exits[direction] = neighborId
-      const neighbor = world.cells[neighborId]
-      const backDirection = directionTowardNeighbor(neighbor, cell)
-      if (backDirection !== null && neighbor.exits[backDirection] === null) {
-        neighbor.exits[backDirection] = cellId
+        if (neighborId === null || !world.cells[neighborId]) {
+          const geometry = reflectGrid45CellGeometry(cell, direction)
+          const geometryKey = grid45CellGeometryKey(geometry.center)
+          const existingNeighborId = cellIdByGeometryKey.get(geometryKey)
+
+          if (existingNeighborId === undefined) {
+            neighborId = world.cells.length
+            world.cells.push({
+              id: neighborId,
+              kind: 'void',
+              feature: 'none',
+              center: geometry.center,
+              vertices: geometry.vertices,
+              exits: {
+                north: null,
+                east: null,
+                south: null,
+                west: null,
+              },
+            })
+            cellIdByGeometryKey.set(geometryKey, neighborId)
+          } else {
+            neighborId = existingNeighborId
+          }
+
+          cell.exits[direction] = neighborId
+        }
+
+        if (neighborId === null) continue
+        const neighbor = world.cells[neighborId]
+        const backDirection = directionTowardNeighbor(neighbor, cell)
+        if (backDirection !== null && neighbor.exits[backDirection] === null) {
+          neighbor.exits[backDirection] = cellId
+        }
+
+        if (!visitedCellIds.has(neighborId)) {
+          visitedCellIds.add(neighborId)
+          nextFrontier.push(neighborId)
+        }
       }
     }
+
+    frontier = nextFrontier
+  }
+
+  return { cellIdByGeometryKey, visitedCellIds }
+}
+
+function ensureEditorBoundaryShell(world: MazeWorld): void {
+  const mapCellIds = world.cells.filter((cell) => isMapCell(cell)).map((cell) => cell.id)
+  ensureEditorShell(world, mapCellIds, 1)
+}
+
+function vertexGeometryKey(point: Vec2): string {
+  const quantize = 1e6
+  return `${Math.round(point.x * quantize)},${Math.round(point.y * quantize)}`
+}
+
+function collectTerrainRegionCellIds(world: MazeWorld, anchorCellId: number): number[] {
+  const anchorCell = world.cells[anchorCellId]
+  if (!anchorCell || !isMapCell(anchorCell)) return []
+
+  const regionKind = anchorCell.kind
+  const regionCellIds: number[] = []
+  const visited = new Set<number>([anchorCellId])
+  const queue = [anchorCellId]
+
+  while (queue.length > 0) {
+    const cellId = queue.shift()
+    if (cellId === undefined) break
+
+    const cell = world.cells[cellId]
+    if (!cell || !isMapCell(cell) || cell.kind !== regionKind) continue
+    regionCellIds.push(cellId)
+
+    for (const direction of directions) {
+      const neighborId = cell.exits[direction]
+      if (neighborId === null || visited.has(neighborId)) continue
+      visited.add(neighborId)
+      queue.push(neighborId)
+    }
+  }
+
+  return regionCellIds
+}
+
+function collectLocalDistances(world: MazeWorld, seedCellIds: Iterable<number>, limitCellIds: Set<number>): Map<number, number> {
+  const distanceByCellId = new Map<number, number>()
+  const queue: number[] = []
+
+  for (const cellId of seedCellIds) {
+    if (!world.cells[cellId] || !limitCellIds.has(cellId)) continue
+    distanceByCellId.set(cellId, 0)
+    queue.push(cellId)
+  }
+
+  while (queue.length > 0) {
+    const cellId = queue.shift()
+    if (cellId === undefined) break
+    const distance = distanceByCellId.get(cellId) ?? 0
+    const cell = world.cells[cellId]
+
+    for (const direction of directions) {
+      const neighborId = cell.exits[direction]
+      if (neighborId === null || !limitCellIds.has(neighborId) || distanceByCellId.has(neighborId)) continue
+      distanceByCellId.set(neighborId, distance + 1)
+      queue.push(neighborId)
+    }
+  }
+
+  return distanceByCellId
+}
+
+function collectEditorRegionPaintTargets(
+  world: MazeWorld,
+  anchorCellId: number,
+  mode: EditorRegionPaintMode,
+): EditorRegionPaintPreview | null {
+  const anchorCell = world.cells[anchorCellId]
+  if (!anchorCell || !isMapCell(anchorCell)) return null
+
+  const previewWorld = cloneMazeWorld(world)
+  const regionCellIds = collectTerrainRegionCellIds(previewWorld, anchorCellId)
+  if (regionCellIds.length === 0) return null
+
+  const regionCellIdSet = new Set(regionCellIds)
+  const { visitedCellIds } = ensureEditorShell(previewWorld, regionCellIds, 2)
+  const distanceByCellId = collectLocalDistances(previewWorld, regionCellIds, visitedCellIds)
+  const regionVertexKeys = new Set<string>()
+  for (const regionCellId of regionCellIds) {
+    for (const vertex of previewWorld.cells[regionCellId].vertices) {
+      regionVertexKeys.add(vertexGeometryKey(vertex))
+    }
+  }
+
+  const targets: EditorRegionPaintTarget[] = []
+  for (const cellId of visitedCellIds) {
+    if (regionCellIdSet.has(cellId)) continue
+    const cell = previewWorld.cells[cellId]
+    if (!cell) continue
+
+    const edgeAdjacent = directions.some((direction) => {
+      const neighborId = cell.exits[direction]
+      return neighborId !== null && regionCellIdSet.has(neighborId)
+    })
+    const vertexAdjacent = cell.vertices.some((vertex) => regionVertexKeys.has(vertexGeometryKey(vertex)))
+    if (!edgeAdjacent && !vertexAdjacent) continue
+    if (mode === 'expand' && isMapCell(cell)) continue
+
+    const sourceCell = world.cells[cellId]
+    const existsInWorld = sourceCell !== undefined
+    const isMapInWorld = existsInWorld && isMapCell(sourceCell)
+    targets.push({
+      cell,
+      geometryKey: grid45CellGeometryKey(cell.center),
+      distance: distanceByCellId.get(cellId) ?? Number.POSITIVE_INFINITY,
+      existsInWorld,
+      isMapInWorld,
+    })
+  }
+
+  targets.sort((left, right) => {
+    if (left.distance !== right.distance) return left.distance - right.distance
+    return left.geometryKey.localeCompare(right.geometryKey)
+  })
+
+  return {
+    anchorCellId,
+    targets,
+    newCellCount: targets.filter((target) => !target.isMapInWorld).length,
+    changedCellCount: targets.filter((target) => target.isMapInWorld).length,
   }
 }
 
@@ -128,6 +293,14 @@ export function countEditorMapCells(world: MazeWorld): number {
 export function canPaintEditorBoundaryCell(world: MazeWorld, cellId: number): boolean {
   const cell = world.cells[cellId]
   return !!cell && (!isMapCell(cell) ? hasAdjacentMapCell(world, cellId) : true)
+}
+
+export function previewEditorRegionPaint(
+  world: MazeWorld,
+  anchorCellId: number,
+  mode: EditorRegionPaintMode,
+): EditorRegionPaintPreview | null {
+  return collectEditorRegionPaintTargets(world, anchorCellId, mode)
 }
 
 export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
@@ -265,6 +438,32 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
   cell.kind = 'floor'
   cell.feature = tool
   return normalizeEditorWorld(nextWorld)
+}
+
+export function paintEditorRegion(
+  world: MazeWorld,
+  anchorCellId: number,
+  mode: EditorRegionPaintMode,
+  tool: EditorPaintTool,
+  facing: Direction,
+): MazeWorld {
+  const preview = collectEditorRegionPaintTargets(world, anchorCellId, mode)
+  if (!preview || preview.targets.length === 0) return world
+
+  const workingWorld = cloneMazeWorld(world)
+  const regionCellIds = collectTerrainRegionCellIds(workingWorld, anchorCellId)
+  if (regionCellIds.length === 0) return world
+
+  const { cellIdByGeometryKey } = ensureEditorShell(workingWorld, regionCellIds, 2)
+  let nextWorld = workingWorld
+
+  for (const target of preview.targets) {
+    const targetCellId = cellIdByGeometryKey.get(target.geometryKey)
+    if (targetCellId === undefined) continue
+    nextWorld = paintEditorWorld(nextWorld, targetCellId, tool, facing)
+  }
+
+  return nextWorld
 }
 
 export function rotateEditorMobAtCell(world: MazeWorld, cellId: number, delta: -1 | 1): MazeWorld {

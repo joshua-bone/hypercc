@@ -30,6 +30,8 @@ export type Grid45RenderOptions = {
   cameraAngle?: number
   highlightCellId?: number | null
   previewCellId?: number | null
+  previewCellIds?: Iterable<number>
+  previewCells?: MazeCell[]
   showPlayer?: boolean
   viewportInset?: {
     top: number
@@ -233,6 +235,7 @@ function collectProjectedCellIds(
   options?: {
     includeBoundaryVoid?: boolean
     previewCellId?: number | null
+    previewCellIds?: Set<number>
   },
 ): Set<number> {
   const projectedCellIds = new Set<number>()
@@ -247,6 +250,7 @@ function collectProjectedCellIds(
     if (
       isMapCell(cell) ||
       entry.cellId === options?.previewCellId ||
+      options?.previewCellIds?.has(entry.cellId) ||
       (options?.includeBoundaryVoid && hasAdjacentMapCell(world, entry.cellId))
     ) {
       projectedCellIds.add(entry.cellId)
@@ -701,7 +705,7 @@ function projectWorldCells(
   cameraAngle: number,
   width: number,
   height: number,
-  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'previewCellId' | 'viewportInset'> & { includeBoundaryVoid?: boolean },
+  options?: Pick<Grid45RenderOptions, 'cameraCellId' | 'previewCellId' | 'previewCellIds' | 'previewCells' | 'viewportInset'> & { includeBoundaryVoid?: boolean },
 ): {
   centerX: number
   centerY: number
@@ -714,12 +718,19 @@ function projectWorldCells(
     options?.cameraCellId !== undefined && isMapCell(world.cells[options.cameraCellId])
       ? options.cameraCellId
       : nearestMapCellId(world, viewCenter)
+  const previewCellIds = new Set<number>(options?.previewCellIds ?? [])
   const projectedCellIds = collectProjectedCellIds(world, anchorCellId, {
     includeBoundaryVoid: options?.includeBoundaryVoid,
     previewCellId: options?.previewCellId,
+    previewCellIds,
   })
-  const projectedCells = world.cells
-    .filter((cell) => projectedCellIds.has(cell.id))
+  const allCells = options?.previewCells ? world.cells.concat(options.previewCells) : world.cells
+  for (const previewCellId of previewCellIds) projectedCellIds.add(previewCellId)
+  const projectedCells = allCells
+    .filter((cell, index, cells) => {
+      if (!projectedCellIds.has(cell.id)) return false
+      return cells.findIndex((candidate) => candidate.id === cell.id) === index
+    })
     .map((cell) => ({
       cell,
       shape: projectCellShape(cell, viewCenter, cameraAngle, centerX, centerY, diskRadius),
@@ -782,6 +793,8 @@ export function renderGrid45Scene(
   const { diskRadius, centerX, centerY, projectedCells, projectedCellById } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, {
     cameraCellId: options?.cameraCellId,
     previewCellId: options?.previewCellId,
+    previewCellIds: options?.previewCellIds,
+    previewCells: options?.previewCells,
     viewportInset: options?.viewportInset,
   })
 
@@ -893,9 +906,14 @@ export function renderGrid45Scene(
     }
   }
 
+  const previewIds = new Set<number>(options?.previewCellIds ?? [])
   if (options?.previewCellId !== undefined && options.previewCellId !== null) {
-    const previewShape = projectedCellById.get(options.previewCellId)?.shape
-    if (previewShape) {
+    previewIds.add(options.previewCellId)
+  }
+  if (previewIds.size > 0) {
+    for (const previewId of previewIds) {
+      const previewShape = projectedCellById.get(previewId)?.shape
+      if (!previewShape) continue
       ctx.save()
       fillCell(ctx, previewShape.outline, 'rgba(89, 207, 255, 0.12)')
       ctx.strokeStyle = 'rgba(89, 207, 255, 0.92)'
