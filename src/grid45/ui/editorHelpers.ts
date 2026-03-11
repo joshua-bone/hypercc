@@ -231,6 +231,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
 
   if (tool === 'none') {
     if (!isMapCell(cell)) return world
+    cell.kind = 'void'
     cell.feature = 'none'
     return normalizeEditorWorld(nextWorld)
   }

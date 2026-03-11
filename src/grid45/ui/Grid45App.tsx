@@ -96,7 +96,7 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'pink-ball', label: 'Pink Ball' },
   { tool: 'teeth', label: 'Teeth' },
   { tool: 'tank', label: 'Tank' },
-  { tool: 'none', label: 'Clear Feature' },
+  { tool: 'none', label: 'Remove Cell' },
 ]
 
 type EditorHistoryEntry = {
@@ -821,6 +821,7 @@ export default function Grid45App() {
                 'Hover an adjacent outside cell to preview it. Painting there creates a new attached cell.',
                 'Shrink Map removes the current outer ring. Grow Map adds the next outer ring. Both actions can be undone.',
                 'Load JSON from the sidebar or drop it onto the game disk.',
+                'The Remove Cell brush erases a cell from the active map entirely.',
                 'Hint tiles show the level hint text configured in the editor.',
               ],
             },
