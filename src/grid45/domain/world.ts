@@ -1331,6 +1331,7 @@ export function createGrid45World(options: CreateGrid45WorldOptions): MazeWorld 
       seed,
       title: 'Generated Maze',
       author: '',
+      hint: '',
       startCellId,
       chipCellIds: progression.layout.chipCellIds,
       socketCellId: progression.layout.socketCellId,

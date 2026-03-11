@@ -453,6 +453,7 @@ function featureFillForCell(
   if (cell.feature === 'flippers') return '#63d4ea'
   if (cell.feature === 'fire-boots') return '#f0a15c'
   if (cell.feature === 'green-button') return '#7ad065'
+  if (cell.feature === 'hint') return '#9dc3f8'
   if (cell.feature === 'socket') return '#5ea0c6'
   if (cell.feature === 'tank-button') return '#b58f5f'
   if (cell.feature === 'exit') return '#6cb774'

@@ -93,6 +93,7 @@ export function createInitialGameState(world: MazeWorld): GameState {
     hasFireBoots: false,
     socketCleared: false,
     togglePhase: false,
+    hintTriggerCount: 0,
     playerDead: false,
     levelComplete: false,
     world,
@@ -169,7 +170,7 @@ function monsterCanEnterCell(
   if ((cell.feature === 'flippers' || cell.feature === 'fire-boots') && !pickupCollected(state, targetId)) return false
 
   if (targetId === playerCellId) return true
-  return cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || isBombActive(state, targetId)
+  return cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || cell.feature === 'hint' || isBombActive(state, targetId)
 }
 
 function dirtBlockCanEnterCell(
@@ -182,7 +183,7 @@ function dirtBlockCanEnterCell(
   const cell = state.world.cells[targetId]
   const kind = resolvedCellKind(state, targetId)
   if (!(kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'fire' || kind === 'gravel')) return false
-  if (cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || isBombActive(state, targetId)) return true
+  if (cell.feature === 'none' || cell.feature === 'green-button' || cell.feature === 'tank-button' || cell.feature === 'hint' || isBombActive(state, targetId)) return true
 
   const keyColor = keyColorFromFeature(cell.feature)
   if (keyColor === 'blue' || keyColor === 'red') return true
@@ -463,6 +464,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   let hasFireBoots = state.hasFireBoots
   let socketCleared = state.socketCleared
   let togglePhase = state.togglePhase
+  let hintTriggerCount = state.hintTriggerCount
   let playerDead = state.playerDead
   let levelComplete = state.levelComplete
 
@@ -560,6 +562,9 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           if (targetCell.feature === 'socket') {
             socketCleared = true
           }
+          if (targetCell.feature === 'hint') {
+            hintTriggerCount += 1
+          }
           if (targetCell.feature === 'green-button') {
             togglePhase = !togglePhase
           }
@@ -630,6 +635,9 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
 
         if (targetCell.feature === 'socket') {
           socketCleared = true
+        }
+        if (targetCell.feature === 'hint') {
+          hintTriggerCount += 1
         }
         if (targetCell.feature === 'green-button') {
           togglePhase = !togglePhase
@@ -709,6 +717,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
     hasFireBoots,
     socketCleared,
     togglePhase,
+    hintTriggerCount,
     playerDead,
     levelComplete,
   }

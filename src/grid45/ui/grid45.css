@@ -185,6 +185,22 @@ body {
   padding-right: 4px;
 }
 
+.grid45HintModal {
+  width: min(560px, 100%);
+}
+
+.grid45HintBody {
+  display: grid;
+  gap: 10px;
+}
+
+.grid45HintText {
+  margin: 0;
+  color: rgba(241, 234, 216, 0.92);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
 .grid45HelpSection {
   display: grid;
   gap: 8px;
@@ -473,6 +489,10 @@ body {
   text-transform: uppercase;
 }
 
+.grid45FieldLabelTall {
+  gap: 8px;
+}
+
 .grid45TextInput {
   min-width: 0;
   padding: 7px 10px;
@@ -488,6 +508,42 @@ body {
 
 .grid45TextInput::placeholder {
   color: rgba(241, 234, 216, 0.38);
+}
+
+.grid45TextArea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.9);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.grid45TextArea::placeholder {
+  color: rgba(241, 234, 216, 0.38);
+}
+
+.grid45MetaActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.grid45MetaState {
+  color: rgba(241, 234, 216, 0.62);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid45HintEditorActions {
+  justify-content: flex-start;
 }
 
 .grid45IoNote {

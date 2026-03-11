@@ -77,6 +77,7 @@ const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'flippers', label: 'Flippers' },
   { tool: 'fire-boots', label: 'Fire Boots' },
   { tool: 'green-button', label: 'Green Button' },
+  { tool: 'hint', label: 'Hint' },
   { tool: 'socket', label: 'Socket' },
   { tool: 'tank-button', label: 'Tank Button' },
   { tool: 'exit', label: 'Exit' },
@@ -188,6 +189,7 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
     flippers: makePaletteIcon(tileset.features.flippers),
     'fire-boots': makePaletteIcon(tileset.features['fire-boots']),
     'green-button': makePaletteIcon(tileset.features['green-button']),
+    hint: makePaletteIcon(tileset.features.hint),
     socket: makePaletteIcon(tileset.features.socket),
     'tank-button': makePaletteIcon(tileset.features['tank-button']),
     exit: makePaletteIcon(tileset.features.exit),
@@ -321,6 +323,70 @@ function HelpModal({
               ))}
             </section>
           ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HintModal({
+  text,
+  onClose,
+}: {
+  text: string
+  onClose: () => void
+}) {
+  return (
+    <div className="grid45HelpOverlay" role="dialog" aria-modal="true" aria-labelledby="grid45HintTitle" onClick={onClose}>
+      <div className="grid45HelpModal grid45HintModal" onClick={(event) => event.stopPropagation()}>
+        <div className="grid45HelpHeader">
+          <div id="grid45HintTitle" className="grid45HelpTitle">Hint</div>
+          <button className="grid45Button grid45HelpClose" type="button" onClick={onClose} aria-label="Close hint">
+            Close
+          </button>
+        </div>
+        <div className="grid45HintBody">
+          {text.split(/\n+/).filter((line) => line.trim().length > 0).map((line, index) => (
+            <p key={`${index}-${line}`} className="grid45HintText">{line}</p>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function HintEditorModal({
+  value,
+  onChange,
+  onClose,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="grid45HelpOverlay" role="dialog" aria-modal="true" aria-labelledby="grid45HintEditorTitle" onClick={onClose}>
+      <div className="grid45HelpModal grid45HintModal" onClick={(event) => event.stopPropagation()}>
+        <div className="grid45HelpHeader">
+          <div id="grid45HintEditorTitle" className="grid45HelpTitle">Level Hint</div>
+          <button className="grid45Button grid45HelpClose" type="button" onClick={onClose} aria-label="Close hint editor">
+            Done
+          </button>
+        </div>
+        <label className="grid45FieldLabel grid45FieldLabelTall">
+          <span>Hint Text</span>
+          <textarea
+            className="grid45TextArea"
+            value={value}
+            placeholder="Shown when the player steps onto a hint tile."
+            onChange={(event) => onChange(event.target.value)}
+            rows={6}
+          />
+        </label>
+        <div className="grid45EndActions grid45HintEditorActions">
+          <button className="grid45Button" type="button" onClick={() => onChange('')}>
+            Clear Hint
+          </button>
         </div>
       </div>
     </div>
@@ -533,6 +599,8 @@ export default function Grid45App() {
   })
   const editorCameraCenterRef = useRef<Vec2 | null>(null)
   const editorCameraAngleRef = useRef(0)
+  const playHintTriggerRef = useRef(0)
+  const playtestHintTriggerRef = useRef(0)
   const [playSession] = useState(createSession)
   const [playSnapshot, setPlaySnapshot] = useState<GameState>(() => playSession.getSnapshot())
   const [playtestSession, setPlaytestSession] = useState<Grid45Session | null>(null)
@@ -565,9 +633,12 @@ export default function Grid45App() {
   const [editorRotateIntent, setEditorRotateIntent] = useState<-1 | 0 | 1>(0)
   const [editorIoStatus, setEditorIoStatus] = useState<EditorIoStatus | null>(null)
   const [editorDropFrame, setEditorDropFrame] = useState<Grid45DiskFrame | null>(null)
+  const [hintOpenText, setHintOpenText] = useState<string | null>(null)
+  const [editorHintOpen, setEditorHintOpen] = useState(false)
   const showDevToggle = import.meta.env.DEV
   const showPlayEndOverlay = activeTab === 'play' && (playSnapshot.levelComplete || playSnapshot.playerDead)
   const showPlaytestEndOverlay = activeTab === 'editor' && !!playtestSnapshot && (playtestSnapshot.levelComplete || playtestSnapshot.playerDead)
+  const overlayOpen = helpOpen || hintOpenText !== null || editorHintOpen
   const endTitle = playSnapshot.levelComplete ? 'You Win!' : 'You Died!'
   const playtestEndTitle = playtestSnapshot?.levelComplete ? 'You Win!' : 'You Lose!'
   const editorPreviewState = createInitialGameState(editorWorld)
@@ -750,6 +821,7 @@ export default function Grid45App() {
                 'Hover an adjacent outside cell to preview it. Painting there creates a new attached cell.',
                 'Shrink Map removes the current outer ring. Grow Map adds the next outer ring. Both actions can be undone.',
                 'Load JSON from the sidebar or drop it onto the game disk.',
+                'Hint tiles show the level hint text configured in the editor.',
               ],
             },
             {
@@ -836,6 +908,8 @@ export default function Grid45App() {
     setPlaytestSession(null)
     setPlaytestSnapshot(null)
     setEditorHistory([])
+    setHintOpenText(null)
+    setEditorHintOpen(false)
     editorCameraCenterRef.current = nextCenter
     editorCameraAngleRef.current = 0
     setEditorWorld(nextWorld)
@@ -867,7 +941,7 @@ export default function Grid45App() {
     }
   }
 
-  const updateEditorMetadata = (field: 'title' | 'author', value: string) => {
+  const updateEditorMetadata = (field: 'title' | 'author' | 'hint', value: string) => {
     setEditorWorld((world) => ({
       ...world,
       [field]: value,
@@ -983,7 +1057,7 @@ export default function Grid45App() {
   }, [])
 
   useEffect(() => {
-    if (!helpOpen) return
+    if (!overlayOpen) return
 
     setEditorIntent('stay')
     setEditorRotateIntent(0)
@@ -995,14 +1069,20 @@ export default function Grid45App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
-      setHelpOpen(false)
+      if (editorHintOpen) {
+        setEditorHintOpen(false)
+      } else if (hintOpenText !== null) {
+        setHintOpenText(null)
+      } else {
+        setHelpOpen(false)
+      }
     }
 
     window.addEventListener('keydown', onKeyDown, { passive: false })
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [helpOpen, playSession, playtestSession])
+  }, [overlayOpen, editorHintOpen, hintOpenText, playSession, playtestSession])
 
   useEffect(() => {
     if (!tileset) return
@@ -1037,6 +1117,37 @@ export default function Grid45App() {
   }, [activeTab, playtestSession])
 
   useEffect(() => {
+    const nextTriggerCount = playSnapshot.hintTriggerCount
+    if (nextTriggerCount <= playHintTriggerRef.current) {
+      playHintTriggerRef.current = nextTriggerCount
+      return
+    }
+
+    playHintTriggerRef.current = nextTriggerCount
+    if (activeTab !== 'play' || playSnapshot.playerDead || playSnapshot.levelComplete) return
+    const hintText = playSnapshot.world.hint?.trim()
+    if (hintText) setHintOpenText(hintText)
+  }, [activeTab, playSnapshot.hintTriggerCount, playSnapshot.levelComplete, playSnapshot.playerDead, playSnapshot.world.hint])
+
+  useEffect(() => {
+    const nextTriggerCount = playtestSnapshot?.hintTriggerCount ?? 0
+    if (nextTriggerCount <= playtestHintTriggerRef.current) {
+      playtestHintTriggerRef.current = nextTriggerCount
+      return
+    }
+
+    playtestHintTriggerRef.current = nextTriggerCount
+    if (activeTab !== 'editor' || !playtestSnapshot || playtestSnapshot.playerDead || playtestSnapshot.levelComplete) return
+    const hintText = playtestSnapshot.world.hint?.trim()
+    if (hintText) setHintOpenText(hintText)
+  }, [activeTab, playtestSnapshot])
+
+  useEffect(() => {
+    if (!showPlayEndOverlay && !showPlaytestEndOverlay) return
+    setHintOpenText(null)
+  }, [showPlayEndOverlay, showPlaytestEndOverlay])
+
+  useEffect(() => {
     if (!stepModeEnabled) return
     playSession.stop()
     playtestSession?.stop()
@@ -1050,7 +1161,7 @@ export default function Grid45App() {
   }, [activeTab, playtestSession])
 
   useEffect(() => {
-    if (helpOpen) return
+    if (overlayOpen) return
 
     if (activeTab === 'play') {
       if (stepModeEnabled) {
@@ -1190,7 +1301,7 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeTab, helpOpen, playSession, playtestSession, playtestSnapshot, rotateSelectedEditorMob, showPlayEndOverlay, stepModeEnabled, undoEditor])
+  }, [activeTab, overlayOpen, playSession, playtestSession, playtestSnapshot, rotateSelectedEditorMob, showPlayEndOverlay, stepModeEnabled, undoEditor])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -1709,6 +1820,8 @@ export default function Grid45App() {
         </div>
       ) : null}
       {helpOpen ? <HelpModal title={helpTitle} sections={helpSections} onClose={() => setHelpOpen(false)} /> : null}
+      {hintOpenText !== null ? <HintModal text={hintOpenText} onClose={() => setHintOpenText(null)} /> : null}
+      {editorHintOpen ? <HintEditorModal value={editorWorld.hint ?? ''} onChange={(value) => updateEditorMetadata('hint', value)} onClose={() => setEditorHintOpen(false)} /> : null}
       {activeTab === 'play' && showDevToggle && showDagValidator ? <DagValidatorPanel ref={dagPanelRef} snapshot={playSnapshot} /> : null}
       {orbitFrame && orbitGroups.length > 0 ? <CircularInventoryRing frame={orbitFrame} groups={orbitGroups} /> : null}
 
@@ -1888,6 +2001,12 @@ export default function Grid45App() {
                     onChange={(event) => updateEditorMetadata('author', event.target.value)}
                   />
                 </label>
+              </div>
+              <div className="grid45MetaActions">
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={() => setEditorHintOpen(true)}>
+                  {editorWorld.hint?.trim() ? 'Edit Hint' : 'Add Hint'}
+                </button>
+                <span className="grid45MetaState">{editorWorld.hint?.trim() ? 'Hint set' : 'No hint'}</span>
               </div>
               <div className="grid45StatList grid45StatListEditor">
                 {editorStatusMetrics.map((metric) => (

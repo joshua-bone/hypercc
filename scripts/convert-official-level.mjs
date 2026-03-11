@@ -26,6 +26,10 @@ function stringifyOfficialLevel(level) {
     `  "author": ${JSON.stringify(level.author)},`,
   ]
 
+  if (level.hint !== undefined && level.hint.length > 0) {
+    lines.push(`  "hint": ${JSON.stringify(level.hint)},`)
+  }
+
   if (level.seed !== undefined) {
     lines.push(`  "seed": ${level.seed >>> 0},`)
   }
@@ -73,6 +77,7 @@ function convertLegacyWorldToOfficialLevel(world, filePath) {
     formatVersion: 2,
     title: typeof world.title === 'string' && world.title.trim().length > 0 ? world.title : deriveTitle(filePath),
     author: typeof world.author === 'string' ? world.author : '',
+    hint: typeof world.hint === 'string' && world.hint.length > 0 ? world.hint : undefined,
     seed: typeof world.seed === 'number' ? world.seed >>> 0 : undefined,
     startCellId,
     cells,

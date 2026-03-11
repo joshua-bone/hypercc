@@ -12,6 +12,7 @@ export type CellFeature =
   | 'flippers'
   | 'fire-boots'
   | 'green-button'
+  | 'hint'
   | 'socket'
   | 'tank-button'
   | 'exit'
@@ -81,6 +82,7 @@ export type MazeWorld = {
   seed: number
   title?: string
   author?: string
+  hint?: string
   cells: MazeCell[]
   startCellId: number
   chipCellIds: number[]
@@ -110,6 +112,7 @@ export type GameState = {
   hasFireBoots: boolean
   socketCleared: boolean
   togglePhase: boolean
+  hintTriggerCount: number
   playerDead: boolean
   levelComplete: boolean
   world: MazeWorld

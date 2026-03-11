@@ -26,6 +26,7 @@ export type OfficialLevelFile = {
   formatVersion: 2
   title: string
   author: string
+  hint?: string
   seed?: number
   startCellId: number
   cells: OfficialLevelCellData[]
@@ -137,6 +138,7 @@ function parseOfficialCellData(value: unknown, cellCount: number, cellId: number
       featureValue !== 'flippers' &&
       featureValue !== 'fire-boots' &&
       featureValue !== 'green-button' &&
+      featureValue !== 'hint' &&
       featureValue !== 'socket' &&
       featureValue !== 'tank-button' &&
       featureValue !== 'exit' &&
@@ -285,6 +287,7 @@ function buildWorldFromOfficialLevel(level: OfficialLevelFile, options?: LoadLev
     seed: toOptionalUint32(level.seed, Date.now()),
     title: level.title.trim().length > 0 ? level.title : deriveLevelTitle(options?.fileName),
     author: level.author,
+    hint: typeof level.hint === 'string' ? level.hint : '',
     cells,
     startCellId,
     chipCellIds,
@@ -302,6 +305,7 @@ function looksLikeOfficialLevelFile(value: unknown): value is OfficialLevelFile 
     value.formatVersion === OFFICIAL_LEVEL_VERSION &&
     typeof value.title === 'string' &&
     typeof value.author === 'string' &&
+    (value.hint === undefined || typeof value.hint === 'string') &&
     typeof value.startCellId === 'number' &&
     Array.isArray(value.cells)
   )
@@ -324,6 +328,7 @@ function loadLegacyMazeWorld(value: LegacyMazeWorldData, options?: LoadLevelOpti
     seed: toOptionalUint32(value.seed, options?.fallbackSeed ?? Date.now()),
     title,
     author,
+    hint: typeof value.hint === 'string' ? value.hint : '',
   }
 }
 
@@ -375,6 +380,7 @@ export function mazeWorldToOfficialLevel(world: MazeWorld): OfficialLevelFile {
     formatVersion: OFFICIAL_LEVEL_VERSION,
     title: world.title?.trim().length ? world.title : 'Untitled Level',
     author: world.author ?? '',
+    hint: world.hint?.length ? world.hint : undefined,
     seed: world.seed,
     startCellId,
     cells,
@@ -389,6 +395,10 @@ export function stringifyOfficialLevel(level: OfficialLevelFile): string {
     `  "title": ${JSON.stringify(level.title)},`,
     `  "author": ${JSON.stringify(level.author)},`,
   ]
+
+  if (level.hint !== undefined && level.hint.length > 0) {
+    lines.push(`  "hint": ${JSON.stringify(level.hint)},`)
+  }
 
   if (level.seed !== undefined) {
     lines.push(`  "seed": ${level.seed >>> 0},`)

@@ -145,6 +145,7 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
       flippers: drawTile(image, { col: 7, row: 9 }),
       'fire-boots': drawTile(image, { col: 7, row: 10 }),
       'green-button': drawTile(image, { col: 3, row: 4 }),
+      hint: drawTile(image, { col: 3, row: 16 }),
       socket: drawTile(image, { col: 3, row: 3 }),
       'tank-button': drawTile(image, { col: 3, row: 9 }),
       exit: drawTile(image, { col: 2, row: 6 }),
