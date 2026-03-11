@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { forwardRef, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
 import { computeGrid45DiskFrame, renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
@@ -7,6 +7,7 @@ import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { directionFromKey } from '../domain/directions'
 import { createInitialGameState } from '../domain/engine'
+import { loadMazeWorldFromJson } from '../domain/levelCodec'
 import { keyColors, type Direction, type GameState, type KeyColor, type MazeWorld, type MoveIntent } from '../domain/model'
 import { createGrid45World, defaultAntCount, defaultPinkBallCount, defaultTankCount, defaultTeethCount, defaultWorldSize, worldSizes, type WorldSize } from '../domain/world'
 import {
@@ -17,9 +18,10 @@ import {
   countEditorMapCells,
   createBlankFloorEditorWorld,
   cloneMazeWorld,
-  downloadWorldJson,
+  downloadLevelJson,
   growEditorWorld,
   nearestCellIdToPoint,
+  normalizeEditorWorld,
   paintEditorWorld,
   rotateDirection,
   rotateEditorMobAtCell,
@@ -118,6 +120,11 @@ type PaintDragState = {
   pointerId: number
   paintButton: 'left' | 'right'
   lastCellId: number | null
+}
+
+type EditorIoStatus = {
+  tone: 'info' | 'error'
+  text: string
 }
 
 type PaletteIconMap = Partial<Record<EditorPaintTool, string>>
@@ -391,6 +398,14 @@ function orbitFrameForCanvas(
   return computeGrid45DiskFrame(rect.width, rect.height, viewportInset)
 }
 
+function isFileDrag(event: ReactDragEvent<HTMLElement>): boolean {
+  return Array.from(event.dataTransfer.types).includes('Files')
+}
+
+function pointInDisk(frame: Grid45DiskFrame, x: number, y: number): boolean {
+  return Math.hypot(x - frame.centerX, y - frame.centerY) <= frame.diskRadius
+}
+
 function describeGate(edge: GameState['world']['areaDag']['edges'][number]): string {
   if (edge.gate === 'socket') return 'socket'
   return edge.color ?? 'door'
@@ -503,6 +518,7 @@ export default function Grid45App() {
   const drawRef = useRef<(() => void) | null>(null)
   const playAgainButtonRef = useRef<HTMLButtonElement | null>(null)
   const playtestAgainButtonRef = useRef<HTMLButtonElement | null>(null)
+  const editorFileInputRef = useRef<HTMLInputElement | null>(null)
   const navRef = useRef<HTMLDivElement | null>(null)
   const hudRef = useRef<HTMLDivElement | null>(null)
   const editorPanelRef = useRef<HTMLDivElement | null>(null)
@@ -534,7 +550,7 @@ export default function Grid45App() {
   const [seedInput, setSeedInput] = useState('')
   const [viewportVersion, setViewportVersion] = useState(0)
   const [editorBlankSize, setEditorBlankSize] = useState<WorldSize>(defaultWorldSize)
-  const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => cloneMazeWorld(playSession.getSnapshot().world))
+  const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => normalizeEditorWorld(cloneMazeWorld(playSession.getSnapshot().world)))
   const [editorHistory, setEditorHistory] = useState<EditorHistoryEntry[]>([])
   const [editorCameraCenter, setEditorCameraCenter] = useState<Vec2>(() => playSession.getSnapshot().world.cells[playSession.getSnapshot().world.startCellId].center)
   const [editorCameraAngle, setEditorCameraAngle] = useState(0)
@@ -547,6 +563,8 @@ export default function Grid45App() {
   const [editorRightMobFacing, setEditorRightMobFacing] = useState<Direction>('north')
   const [editorIntent, setEditorIntent] = useState<MoveIntent>('stay')
   const [editorRotateIntent, setEditorRotateIntent] = useState<-1 | 0 | 1>(0)
+  const [editorIoStatus, setEditorIoStatus] = useState<EditorIoStatus | null>(null)
+  const [editorDropFrame, setEditorDropFrame] = useState<Grid45DiskFrame | null>(null)
   const showDevToggle = import.meta.env.DEV
   const showPlayEndOverlay = activeTab === 'play' && (playSnapshot.levelComplete || playSnapshot.playerDead)
   const showPlaytestEndOverlay = activeTab === 'editor' && !!playtestSnapshot && (playtestSnapshot.levelComplete || playtestSnapshot.playerDead)
@@ -731,6 +749,7 @@ export default function Grid45App() {
               lines: [
                 'Hover an adjacent outside cell to preview it. Painting there creates a new attached cell.',
                 'Shrink Map removes the current outer ring. Grow Map adds the next outer ring. Both actions can be undone.',
+                'Load JSON from the sidebar or drop it onto the game disk.',
               ],
             },
             {
@@ -809,6 +828,50 @@ export default function Grid45App() {
     } else {
       setEditorRightTool(tool)
     }
+  }
+
+  const applyEditorWorld = (nextWorld: MazeWorld) => {
+    const nextCenter = nextWorld.cells[nextWorld.startCellId].center
+    playtestSession?.stop()
+    setPlaytestSession(null)
+    setPlaytestSnapshot(null)
+    setEditorHistory([])
+    editorCameraCenterRef.current = nextCenter
+    editorCameraAngleRef.current = 0
+    setEditorWorld(nextWorld)
+    setEditorSelectedCellId(nextWorld.startCellId)
+    setEditorHoverCellId(null)
+    setEditorCameraCenter(nextCenter)
+    setEditorCameraAngle(0)
+  }
+
+  const importEditorFile = async (file: File) => {
+    try {
+      const loadedWorld = loadMazeWorldFromJson(await file.text(), {
+        fallbackSeed: nextSeed(),
+        fileName: file.name,
+      })
+      applyEditorWorld(normalizeEditorWorld(loadedWorld))
+      setEditorIoStatus({
+        tone: 'info',
+        text: `Loaded ${file.name}`,
+      })
+    } catch (error) {
+      setEditorIoStatus({
+        tone: 'error',
+        text: error instanceof Error ? error.message : 'Failed to load level file.',
+      })
+    } finally {
+      setEditorDropFrame(null)
+      if (editorFileInputRef.current) editorFileInputRef.current.value = ''
+    }
+  }
+
+  const updateEditorMetadata = (field: 'title' | 'author', value: string) => {
+    setEditorWorld((world) => ({
+      ...world,
+      [field]: value,
+    }))
   }
 
   const measureViewportInset = (): NonNullable<Grid45RenderOptions['viewportInset']> => {
@@ -968,6 +1031,10 @@ export default function Grid45App() {
   useEffect(() => {
     if (activeTab !== 'play') playSession.stop()
   }, [activeTab, playSession])
+
+  useEffect(() => {
+    if (activeTab !== 'editor' || playtestSession) setEditorDropFrame(null)
+  }, [activeTab, playtestSession])
 
   useEffect(() => {
     if (!stepModeEnabled) return
@@ -1346,6 +1413,57 @@ export default function Grid45App() {
     setEditorSelectedCellId(nearestCellIdToPoint(editorWorld, nextCenter))
   }
 
+  const editorDiskFrameForCanvas = (): Grid45DiskFrame | null => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return null
+    return computeGrid45DiskFrame(rect.width, rect.height, measureViewportInset())
+  }
+
+  const handleEditorFileDragOver = (event: ReactDragEvent<HTMLCanvasElement>) => {
+    if (activeTab !== 'editor' || playtestSession || !isFileDrag(event)) return
+
+    const frame = editorDiskFrameForCanvas()
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!frame || !rect) return
+
+    const insideDisk = pointInDisk(frame, event.clientX - rect.left, event.clientY - rect.top)
+    if (!insideDisk) {
+      setEditorDropFrame(null)
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+    setEditorDropFrame(frame)
+  }
+
+  const handleEditorFileDragLeave = (event: ReactDragEvent<HTMLCanvasElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setEditorDropFrame(null)
+    }
+  }
+
+  const handleEditorFileDrop = (event: ReactDragEvent<HTMLCanvasElement>) => {
+    if (activeTab !== 'editor' || playtestSession || !isFileDrag(event)) return
+
+    const frame = editorDiskFrameForCanvas()
+    const rect = canvasRef.current?.getBoundingClientRect()
+    const file = event.dataTransfer.files[0]
+    if (!frame || !rect || !file) {
+      setEditorDropFrame(null)
+      return
+    }
+
+    const insideDisk = pointInDisk(frame, event.clientX - rect.left, event.clientY - rect.top)
+    setEditorDropFrame(null)
+    if (!insideDisk) return
+
+    event.preventDefault()
+    void importEditorFile(file)
+  }
+
   const handleEditorPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (activeTab !== 'editor' || playtestSession) return
 
@@ -1518,6 +1636,9 @@ export default function Grid45App() {
         onPointerMove={handleEditorPointer}
         onPointerUp={handleEditorPointer}
         onPointerCancel={handleEditorPointer}
+        onDragOver={handleEditorFileDragOver}
+        onDragLeave={handleEditorFileDragLeave}
+        onDrop={handleEditorFileDrop}
         onPointerLeave={() => {
           if (activeTab === 'editor') setEditorHoverCellId(null)
         }}
@@ -1528,6 +1649,20 @@ export default function Grid45App() {
           if (activeTab === 'editor') event.preventDefault()
         }}
       />
+      {editorDropFrame && activeTab === 'editor' && playtestSnapshot === null ? (
+        <div
+          className="grid45DropHint"
+          aria-hidden="true"
+          style={{
+            left: editorDropFrame.centerX - editorDropFrame.diskRadius,
+            top: editorDropFrame.centerY - editorDropFrame.diskRadius,
+            width: editorDropFrame.diskRadius * 2,
+            height: editorDropFrame.diskRadius * 2,
+          }}
+        >
+          <div className="grid45DropHintInner">Drop level JSON</div>
+        </div>
+      ) : null}
       {showPlayEndOverlay ? (
         <div className={`grid45EndOverlay${playSnapshot.playerDead ? ' grid45EndOverlayLose' : ''}`}>
           <div className="grid45EndTitle">{endTitle}</div>
@@ -1713,6 +1848,17 @@ export default function Grid45App() {
             </>
           ) : (
             <>
+              <input
+                ref={editorFileInputRef}
+                className="grid45HiddenInput"
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (!file) return
+                  void importEditorFile(file)
+                }}
+              />
               <label className="grid45Toggle grid45ToggleCompact">
                 <input
                   type="checkbox"
@@ -1721,6 +1867,28 @@ export default function Grid45App() {
                 />
                 <span>Step Mode for Playtest</span>
               </label>
+              <div className="grid45MetaGrid">
+                <label className="grid45FieldLabel">
+                  <span>Title</span>
+                  <input
+                    className="grid45TextInput"
+                    type="text"
+                    value={editorWorld.title ?? ''}
+                    placeholder="Untitled Level"
+                    onChange={(event) => updateEditorMetadata('title', event.target.value)}
+                  />
+                </label>
+                <label className="grid45FieldLabel">
+                  <span>Author</span>
+                  <input
+                    className="grid45TextInput"
+                    type="text"
+                    value={editorWorld.author ?? ''}
+                    placeholder="Author"
+                    onChange={(event) => updateEditorMetadata('author', event.target.value)}
+                  />
+                </label>
+              </div>
               <div className="grid45StatList grid45StatListEditor">
                 {editorStatusMetrics.map((metric) => (
                   <div key={metric.label} className={`grid45StatItem${metric.wide ? ' grid45StatItemWide' : ''}`}>
@@ -1732,6 +1900,16 @@ export default function Grid45App() {
               <div className="grid45EditorActionGrid">
                 <button className="grid45Button grid45ButtonCompact grid45ButtonPrimary" type="button" onClick={startEditorPlaytest}>
                   Playtest
+                </button>
+                <button
+                  className="grid45Button grid45ButtonCompact"
+                  type="button"
+                  onClick={() => editorFileInputRef.current?.click()}
+                >
+                  Load JSON
+                </button>
+                <button className="grid45Button grid45ButtonCompact" type="button" onClick={() => downloadLevelJson(editorWorld)}>
+                  Save JSON
                 </button>
                 <button className="grid45Button grid45ButtonCompact" type="button" onClick={undoEditor} disabled={editorHistory.length === 0}>
                   Undo
@@ -1767,14 +1945,11 @@ export default function Grid45App() {
                 <button className="grid45Button grid45ButtonCompact" type="button" onClick={createNewBlankEditorMap}>
                   New Blank
                 </button>
-                <button className="grid45Button grid45ButtonCompact" type="button" onClick={() => downloadWorldJson(editorWorld)}>
-                  Download
-                </button>
                 <button
                   className="grid45Button grid45ButtonCompact"
                   type="button"
                   onClick={() => {
-                    const nextWorld = cloneMazeWorld(playSnapshot.world)
+                    const nextWorld = normalizeEditorWorld(cloneMazeWorld(playSnapshot.world))
                     setEditorHistory([])
                     editorCameraCenterRef.current = nextWorld.cells[nextWorld.startCellId].center
                     editorCameraAngleRef.current = 0
@@ -1788,6 +1963,7 @@ export default function Grid45App() {
                   Use Play Map
                 </button>
               </div>
+              {editorIoStatus ? <div className={`grid45IoNote grid45IoNote${editorIoStatus.tone === 'error' ? 'Error' : 'Info'}`}>{editorIoStatus.text}</div> : null}
               <div className="grid45Palette grid45PaletteCompact">
                 {editorPalette.map((item) => (
                   <button

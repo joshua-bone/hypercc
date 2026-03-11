@@ -1,5 +1,7 @@
 import { hyperbolicDistance } from '../../hyper/poincare'
 import type { Vec2 } from '../../hyper/vec2'
+import { directionTowardNeighbor, grid45CellGeometryKey, reflectGrid45CellGeometry } from '../domain/cellGeometry'
+import { mazeWorldToOfficialLevel, stringifyOfficialLevel } from '../domain/levelCodec'
 import { currentCellKind, isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeCell, type MazeWorld, type MonsterKind } from '../domain/model'
 import { directions } from '../domain/directions'
 
@@ -59,6 +61,48 @@ function hasAdjacentMapCell(world: MazeWorld, cellId: number): boolean {
   })
 }
 
+function ensureEditorBoundaryShell(world: MazeWorld): void {
+  const cellIdByGeometryKey = new Map<string, number>(world.cells.map((cell) => [grid45CellGeometryKey(cell.center), cell.id]))
+  const mapCellIds = world.cells.filter((cell) => isMapCell(cell)).map((cell) => cell.id)
+
+  for (const cellId of mapCellIds) {
+    const cell = world.cells[cellId]
+    for (const direction of directions) {
+      const existingNeighborId = cell.exits[direction]
+      if (existingNeighborId !== null && world.cells[existingNeighborId]) continue
+
+      const geometry = reflectGrid45CellGeometry(cell, direction)
+      const geometryKey = grid45CellGeometryKey(geometry.center)
+      let neighborId = cellIdByGeometryKey.get(geometryKey)
+
+      if (neighborId === undefined) {
+        neighborId = world.cells.length
+        world.cells.push({
+          id: neighborId,
+          kind: 'void',
+          feature: 'none',
+          center: geometry.center,
+          vertices: geometry.vertices,
+          exits: {
+            north: null,
+            east: null,
+            south: null,
+            west: null,
+          },
+        })
+        cellIdByGeometryKey.set(geometryKey, neighborId)
+      }
+
+      cell.exits[direction] = neighborId
+      const neighbor = world.cells[neighborId]
+      const backDirection = directionTowardNeighbor(neighbor, cell)
+      if (backDirection !== null && neighbor.exits[backDirection] === null) {
+        neighbor.exits[backDirection] = cellId
+      }
+    }
+  }
+}
+
 export function collectEditorBoundaryCellIds(world: MazeWorld): number[] {
   return world.cells
     .filter((cell) => {
@@ -88,6 +132,7 @@ export function canPaintEditorBoundaryCell(world: MazeWorld, cellId: number): bo
 
 export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   const nextWorld = cloneMazeWorld(world)
+  ensureEditorBoundaryShell(nextWorld)
 
   for (const cell of nextWorld.cells) {
     if (!isMapCell(cell) || !isPassableCellKind(cell.kind, false)) {
@@ -251,12 +296,21 @@ export function createBlankFloorEditorWorld(world: MazeWorld, startCellId = worl
   return normalizeEditorWorld(nextWorld)
 }
 
-export function downloadWorldJson(world: MazeWorld): void {
-  const blob = new Blob([JSON.stringify(world, null, 2)], { type: 'application/json' })
+function sanitizeLevelFileName(name: string): string {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return normalized.length > 0 ? normalized : 'untitled-level'
+}
+
+export function downloadLevelJson(world: MazeWorld): void {
+  const blob = new Blob([stringifyOfficialLevel(mazeWorldToOfficialLevel(world))], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `hypercc-${world.seed}.json`
+  link.download = `${sanitizeLevelFileName(world.title ?? `hypercc-${world.seed}`)}.json`
   link.click()
   URL.revokeObjectURL(url)
 }

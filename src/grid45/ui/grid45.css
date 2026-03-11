@@ -30,6 +30,31 @@ body {
   touch-action: none;
 }
 
+.grid45DropHint {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(94, 160, 198, 0.72);
+  border-radius: 50%;
+  background: rgba(17, 29, 39, 0.18);
+  box-shadow: 0 0 0 12px rgba(17, 29, 39, 0.08);
+  pointer-events: none;
+}
+
+.grid45DropHintInner {
+  padding: 10px 16px;
+  border: 1px solid rgba(94, 160, 198, 0.32);
+  border-radius: 999px;
+  background: rgba(7, 11, 15, 0.72);
+  color: #d8eef8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .grid45Nav {
   position: absolute;
   top: 16px;
@@ -261,6 +286,10 @@ body {
   overflow: auto;
 }
 
+.grid45HiddenInput {
+  display: none;
+}
+
 .grid45Eyebrow {
   margin-bottom: 6px;
   color: #c8a96b;
@@ -425,6 +454,54 @@ body {
 .grid45ToggleCompact {
   margin-top: 0;
   font-size: 12px;
+}
+
+.grid45MetaGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.grid45FieldLabel {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: rgba(241, 234, 216, 0.9);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.grid45TextInput {
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 10px;
+  background: rgba(12, 17, 23, 0.9);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.grid45TextInput::placeholder {
+  color: rgba(241, 234, 216, 0.38);
+}
+
+.grid45IoNote {
+  padding: 2px 0 1px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.grid45IoNoteInfo {
+  color: rgba(157, 216, 242, 0.9);
+}
+
+.grid45IoNoteError {
+  color: rgba(255, 155, 155, 0.94);
 }
 
 .grid45Button {
@@ -878,7 +955,8 @@ body {
   .grid45MonsterCompactGrid,
   .grid45StatListEditor,
   .grid45EditorActionGrid,
-  .grid45BrushGrid {
+  .grid45BrushGrid,
+  .grid45MetaGrid {
     grid-template-columns: 1fr;
   }
 
