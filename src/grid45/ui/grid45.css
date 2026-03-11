@@ -696,72 +696,90 @@ body {
   background: rgba(241, 234, 216, 0.08);
 }
 
-.grid45SegmentedButton:focus-visible,
-.grid45EditorMenuSummary:focus-visible {
-  outline: 2px solid rgba(255, 227, 157, 0.92);
-  outline-offset: 2px;
-}
-
 .grid45SegmentedButtonActive {
   background: rgba(200, 169, 107, 0.24);
   color: #ffe39d;
 }
 
-.grid45EditorMenuRow {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+.grid45EditorMenuBar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-height: 28px;
+  padding: 0 2px;
+  border-bottom: 1px solid rgba(241, 234, 216, 0.12);
+}
+
+.grid45EditorMenuBar::after {
+  content: '';
+  flex: 1 1 auto;
 }
 
 .grid45EditorMenu {
+  position: relative;
   min-width: 0;
-  border: 1px solid rgba(241, 234, 216, 0.12);
-  border-radius: 12px;
-  background: rgba(12, 17, 23, 0.52);
 }
 
-.grid45EditorMenu[open] {
-  background: rgba(12, 17, 23, 0.82);
-}
-
-.grid45EditorMenuSummary {
-  list-style: none;
-  display: flex;
+.grid45EditorMenuTrigger {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 34px;
-  padding: 0 11px;
-  color: rgba(241, 234, 216, 0.88);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgba(241, 234, 216, 0.82);
   cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.grid45EditorMenuSummary:hover {
+.grid45EditorMenuTrigger::after {
+  content: '▾';
+  color: rgba(241, 234, 216, 0.42);
+  font-size: 10px;
+}
+
+.grid45EditorMenuTrigger:hover,
+.grid45EditorMenuTriggerOpen {
+  background: rgba(241, 234, 216, 0.08);
   color: #f6efde;
 }
 
-.grid45EditorMenuSummary::-webkit-details-marker {
-  display: none;
+.grid45EditorMenuTrigger:focus-visible,
+.grid45SegmentedButton:focus-visible {
+  outline: 2px solid rgba(255, 227, 157, 0.92);
+  outline-offset: 2px;
 }
 
-.grid45EditorMenuSummary::after {
-  content: '▾';
-  color: rgba(241, 234, 216, 0.5);
-  font-size: 12px;
-  transition: transform 120ms ease;
+.grid45EditorMenuDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: min(320px, calc(100vw - 72px));
+  padding: 0;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 14px;
+  background: rgba(9, 14, 20, 0.96);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(16px);
 }
 
-.grid45EditorMenu[open] .grid45EditorMenuSummary::after {
-  transform: rotate(180deg);
+.grid45EditorMenuDropdown[role='menu'] {
+  display: block;
 }
 
 .grid45EditorMenuBody {
   display: grid;
   gap: 6px;
-  padding: 0 8px 8px;
+  padding: 10px;
 }
 
 .grid45EditorMenuMeta {
@@ -1203,7 +1221,6 @@ body {
   .grid45EditorActionGrid,
   .grid45BrushGrid,
   .grid45MetaGrid,
-  .grid45EditorMenuRow,
   .grid45EditorBlankRow {
     grid-template-columns: 1fr;
   }

@@ -135,6 +135,7 @@ type EditorIoStatus = {
   text: string
 }
 
+type EditorMenuId = 'level' | 'file' | 'map'
 type EditorPaintMode = 'brush' | 'bucket'
 type EditorHoverPreviewState = {
   previewCellIds: number[]
@@ -759,6 +760,7 @@ export default function Grid45App() {
   const navRef = useRef<HTMLDivElement | null>(null)
   const hudRef = useRef<HTMLDivElement | null>(null)
   const editorPanelRef = useRef<HTMLDivElement | null>(null)
+  const editorMenuBarRef = useRef<HTMLDivElement | null>(null)
   const dagPanelRef = useRef<HTMLElement | null>(null)
   const paintDragRef = useRef<PaintDragState | null>(null)
   const middleDragRef = useRef<MiddleDragState | null>(null)
@@ -797,6 +799,7 @@ export default function Grid45App() {
   const [editorHoverCellId, setEditorHoverCellId] = useState<number | null>(null)
   const [editorHoverPreview, setEditorHoverPreview] = useState<EditorHoverPreviewState | null>(null)
   const [editorPaintMode, setEditorPaintMode] = useState<EditorPaintMode>('brush')
+  const [editorMenuOpen, setEditorMenuOpen] = useState<EditorMenuId | null>(null)
   const [helpOpen, setHelpOpen] = useState(false)
   const [editorLeftTool, setEditorLeftTool] = useState<EditorPaintTool>('floor')
   const [editorRightTool, setEditorRightTool] = useState<EditorPaintTool>('wall')
@@ -1091,12 +1094,21 @@ export default function Grid45App() {
     }
   }
 
+  const toggleEditorMenu = (menuId: EditorMenuId) => {
+    setEditorMenuOpen((openMenu) => (openMenu === menuId ? null : menuId))
+  }
+
+  const closeEditorMenu = () => {
+    setEditorMenuOpen(null)
+  }
+
   const applyEditorWorld = (nextWorld: MazeWorld) => {
     const nextCenter = nextWorld.cells[nextWorld.startCellId].center
     playtestSession?.stop()
     setPlaytestSession(null)
     setPlaytestSnapshot(null)
     setEditorHistory([])
+    setEditorMenuOpen(null)
     setEditorHintOpen(false)
     editorCameraCenterRef.current = nextCenter
     editorCameraAngleRef.current = 0
@@ -1295,6 +1307,33 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [overlayOpen, editorHintOpen, playSession, playtestSession])
+
+  useEffect(() => {
+    if (activeTab !== 'editor' || playtestSnapshot || editorMenuOpen === null) return
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && editorMenuBarRef.current?.contains(target)) return
+      setEditorMenuOpen(null)
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setEditorMenuOpen(null)
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [activeTab, editorMenuOpen, playtestSnapshot])
+
+  useEffect(() => {
+    if (activeTab !== 'editor' || playtestSnapshot !== null || !overlayOpen) return
+    setEditorMenuOpen(null)
+  }, [activeTab, overlayOpen, playtestSnapshot])
 
   useEffect(() => {
     if (!tileset) return
@@ -1621,6 +1660,7 @@ export default function Grid45App() {
     if (playtestSession) return
     const normalizedWorld = cloneMazeWorld(editorWorld)
     setEditorWorld(normalizedWorld)
+    setEditorMenuOpen(null)
     clearEditorHover()
     setPlaytestSession(createPlaytestSession(normalizedWorld))
     setPlaytestSnapshot(null)
@@ -2254,6 +2294,193 @@ export default function Grid45App() {
                   void importEditorFile(file)
                 }}
               />
+              <div ref={editorMenuBarRef} className="grid45EditorMenuBar" role="menubar" aria-label="Editor menus">
+                <div className="grid45EditorMenu">
+                  <button
+                    className={`grid45EditorMenuTrigger${editorMenuOpen === 'level' ? ' grid45EditorMenuTriggerOpen' : ''}`}
+                    type="button"
+                    role="menuitem"
+                    aria-haspopup="true"
+                    aria-expanded={editorMenuOpen === 'level'}
+                    onClick={() => toggleEditorMenu('level')}
+                  >
+                    Level
+                  </button>
+                  {editorMenuOpen === 'level' ? (
+                    <div className="grid45EditorMenuDropdown" role="menu">
+                      <div className="grid45EditorMenuBody">
+                        <div className="grid45MetaGrid">
+                          <label className="grid45FieldLabel">
+                            <span>Title</span>
+                            <input
+                              className="grid45TextInput"
+                              type="text"
+                              value={editorWorld.title ?? ''}
+                              placeholder="Untitled Level"
+                              onChange={(event) => updateEditorMetadata('title', event.target.value)}
+                            />
+                          </label>
+                          <label className="grid45FieldLabel">
+                            <span>Author</span>
+                            <input
+                              className="grid45TextInput"
+                              type="text"
+                              value={editorWorld.author ?? ''}
+                              placeholder="Author"
+                              onChange={(event) => updateEditorMetadata('author', event.target.value)}
+                            />
+                          </label>
+                        </div>
+                        <div className="grid45MetaActions">
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              setEditorHintOpen(true)
+                            }}
+                          >
+                            {editorWorld.hint?.trim() ? 'Edit Hint' : 'Add Hint'}
+                          </button>
+                          <span className="grid45MetaState">{editorWorld.hint?.trim() ? 'Hint set' : 'No hint'}</span>
+                        </div>
+                        <div className="grid45EditorMenuMeta">
+                          <span>{`Seed ${editorWorld.seed}`}</span>
+                          <span>{`Start ${editorWorld.startCellId}`}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="grid45EditorMenu">
+                  <button
+                    className={`grid45EditorMenuTrigger${editorMenuOpen === 'file' ? ' grid45EditorMenuTriggerOpen' : ''}`}
+                    type="button"
+                    role="menuitem"
+                    aria-haspopup="true"
+                    aria-expanded={editorMenuOpen === 'file'}
+                    onClick={() => toggleEditorMenu('file')}
+                  >
+                    File
+                  </button>
+                  {editorMenuOpen === 'file' ? (
+                    <div className="grid45EditorMenuDropdown" role="menu">
+                      <div className="grid45EditorMenuBody">
+                        <div className="grid45EditorActionGrid">
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              editorFileInputRef.current?.click()
+                            }}
+                          >
+                            Load JSON
+                          </button>
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              downloadLevelJson(editorWorld)
+                            }}
+                          >
+                            Save JSON
+                          </button>
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              usePlayMapAsEditorWorld()
+                            }}
+                          >
+                            Use Play Map
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="grid45EditorMenu">
+                  <button
+                    className={`grid45EditorMenuTrigger${editorMenuOpen === 'map' ? ' grid45EditorMenuTriggerOpen' : ''}`}
+                    type="button"
+                    role="menuitem"
+                    aria-haspopup="true"
+                    aria-expanded={editorMenuOpen === 'map'}
+                    onClick={() => toggleEditorMenu('map')}
+                  >
+                    Map
+                  </button>
+                  {editorMenuOpen === 'map' ? (
+                    <div className="grid45EditorMenuDropdown" role="menu">
+                      <div className="grid45EditorMenuBody">
+                        <div className="grid45EditorActionGrid">
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              clearCurrentEditorMap()
+                            }}
+                          >
+                            Clear Map
+                          </button>
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              shrinkCurrentEditorMap()
+                            }}
+                            disabled={editorShrinkDelta === 0 || editorShrinkDelta >= editorMapCellCount}
+                          >
+                            {`Shrink Map (-${editorShrinkDelta})`}
+                          </button>
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              growCurrentEditorMap()
+                            }}
+                            disabled={editorGrowDelta === 0}
+                          >
+                            {`Grow Map (+${editorGrowDelta})`}
+                          </button>
+                        </div>
+                        <div className="grid45EditorBlankRow">
+                          <label className="grid45SelectLabel grid45CompactField">
+                            <span>Blank</span>
+                            <select
+                              className="grid45Select grid45SelectCompact"
+                              value={editorBlankSize}
+                              onChange={(event) => setEditorBlankSize(event.target.value as WorldSize)}
+                            >
+                              {worldSizes.map((size) => (
+                                <option key={size} value={size}>
+                                  {worldSizeLabels[size]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            className="grid45Button grid45ButtonCompact"
+                            type="button"
+                            onClick={() => {
+                              closeEditorMenu()
+                              createNewBlankEditorMap()
+                            }}
+                          >
+                            New Blank
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               <div className="grid45EditorToolbar">
                 <div className="grid45SegmentedControl" role="group" aria-label="Paint mode">
                   <button
@@ -2295,105 +2522,6 @@ export default function Grid45App() {
                     <span className="grid45StatValue">{metric.value}</span>
                   </div>
                 ))}
-              </div>
-              <div className="grid45EditorMenuRow">
-                <details className="grid45EditorMenu">
-                  <summary className="grid45EditorMenuSummary">Level</summary>
-                  <div className="grid45EditorMenuBody">
-                    <div className="grid45MetaGrid">
-                      <label className="grid45FieldLabel">
-                        <span>Title</span>
-                        <input
-                          className="grid45TextInput"
-                          type="text"
-                          value={editorWorld.title ?? ''}
-                          placeholder="Untitled Level"
-                          onChange={(event) => updateEditorMetadata('title', event.target.value)}
-                        />
-                      </label>
-                      <label className="grid45FieldLabel">
-                        <span>Author</span>
-                        <input
-                          className="grid45TextInput"
-                          type="text"
-                          value={editorWorld.author ?? ''}
-                          placeholder="Author"
-                          onChange={(event) => updateEditorMetadata('author', event.target.value)}
-                        />
-                      </label>
-                    </div>
-                    <div className="grid45MetaActions">
-                      <button className="grid45Button grid45ButtonCompact" type="button" onClick={() => setEditorHintOpen(true)}>
-                        {editorWorld.hint?.trim() ? 'Edit Hint' : 'Add Hint'}
-                      </button>
-                      <span className="grid45MetaState">{editorWorld.hint?.trim() ? 'Hint set' : 'No hint'}</span>
-                    </div>
-                    <div className="grid45EditorMenuMeta">
-                      <span>{`Seed ${editorWorld.seed}`}</span>
-                      <span>{`Start ${editorWorld.startCellId}`}</span>
-                    </div>
-                  </div>
-                </details>
-                <details className="grid45EditorMenu">
-                  <summary className="grid45EditorMenuSummary">File</summary>
-                  <div className="grid45EditorMenuBody">
-                    <div className="grid45EditorActionGrid">
-                      <button
-                        className="grid45Button grid45ButtonCompact"
-                        type="button"
-                        onClick={() => editorFileInputRef.current?.click()}
-                      >
-                        Load JSON
-                      </button>
-                      <button className="grid45Button grid45ButtonCompact" type="button" onClick={() => downloadLevelJson(editorWorld)}>
-                        Save JSON
-                      </button>
-                      <button className="grid45Button grid45ButtonCompact" type="button" onClick={usePlayMapAsEditorWorld}>
-                        Use Play Map
-                      </button>
-                    </div>
-                  </div>
-                </details>
-                <details className="grid45EditorMenu">
-                  <summary className="grid45EditorMenuSummary">Map</summary>
-                  <div className="grid45EditorMenuBody">
-                    <div className="grid45EditorActionGrid">
-                      <button className="grid45Button grid45ButtonCompact" type="button" onClick={clearCurrentEditorMap}>
-                        Clear Map
-                      </button>
-                      <button
-                        className="grid45Button grid45ButtonCompact"
-                        type="button"
-                        onClick={shrinkCurrentEditorMap}
-                        disabled={editorShrinkDelta === 0 || editorShrinkDelta >= editorMapCellCount}
-                      >
-                        {`Shrink Map (-${editorShrinkDelta})`}
-                      </button>
-                      <button className="grid45Button grid45ButtonCompact" type="button" onClick={growCurrentEditorMap} disabled={editorGrowDelta === 0}>
-                        {`Grow Map (+${editorGrowDelta})`}
-                      </button>
-                    </div>
-                    <div className="grid45EditorBlankRow">
-                      <label className="grid45SelectLabel grid45CompactField">
-                        <span>Blank</span>
-                        <select
-                          className="grid45Select grid45SelectCompact"
-                          value={editorBlankSize}
-                          onChange={(event) => setEditorBlankSize(event.target.value as WorldSize)}
-                        >
-                          {worldSizes.map((size) => (
-                            <option key={size} value={size}>
-                              {worldSizeLabels[size]}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button className="grid45Button grid45ButtonCompact" type="button" onClick={createNewBlankEditorMap}>
-                        New Blank
-                      </button>
-                    </div>
-                  </div>
-                </details>
               </div>
               {editorIoStatus ? <div className={`grid45IoNote grid45IoNote${editorIoStatus.tone === 'error' ? 'Error' : 'Info'}`}>{editorIoStatus.text}</div> : null}
               <div className="grid45BrushGrid">
