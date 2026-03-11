@@ -138,11 +138,35 @@ describe('Grid45App editor', () => {
     render(<Grid45App />)
 
     await user.click(screen.getByRole('button', { name: 'Editor' }))
+    await user.click(screen.getByText('Level'))
 
     const authorInput = screen.getByRole('textbox', { name: 'Author' })
     await user.type(authorInput, 'S')
 
     expect(authorInput).toHaveValue('S')
+  })
+
+  it('shows a delta badge when bucket fill previews a terrain region', async () => {
+    const user = userEvent.setup()
+    render(<Grid45App />)
+
+    await user.click(screen.getByRole('button', { name: 'Editor' }))
+    await user.click(screen.getByRole('button', { name: 'Wall' }))
+    await user.click(screen.getByRole('button', { name: 'Bucket Fill' }))
+
+    const canvas = document.querySelector('canvas')
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Expected editor canvas to exist.')
+
+    fireEvent.pointerMove(canvas, {
+      buttons: 0,
+      clientX: 120,
+      clientY: 120,
+      pointerId: 1,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText((content) => content.includes('Δ'))).toBeInTheDocument()
+    })
   })
 
   it('restores a normal paint change when undo is used', async () => {

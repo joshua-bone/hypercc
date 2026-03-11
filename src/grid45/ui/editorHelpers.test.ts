@@ -7,8 +7,10 @@ import {
   countEditorMapCells,
   createBlankFloorEditorWorld,
   growEditorWorld,
+  paintEditorBucketFill,
   paintEditorRegion,
   paintEditorWorld,
+  previewEditorBucketFill,
   previewEditorRegionPaint,
   shrinkEditorWorld,
 } from './editorHelpers'
@@ -112,5 +114,25 @@ describe('editorHelpers', () => {
     expect(existingTarget).toBeDefined()
     expect(overwritten.cells[existingTarget!.cell.id].kind).toBe('fire')
     expect(countEditorMapCells(overwritten)).toBe(countEditorMapCells(world) + (preview?.newCellCount ?? 0))
+  })
+
+  it('bucket fill previews and repaints a contiguous terrain region', () => {
+    let world = createEditorWorld()
+    const anchorCellId = world.startCellId
+    const neighborCellId = firstMapNeighborId(world, anchorCellId)
+
+    world = paintEditorWorld(world, anchorCellId, 'wall', 'north')
+    world = paintEditorWorld(world, neighborCellId, 'wall', 'north')
+
+    const preview = previewEditorBucketFill(world, anchorCellId, 'water')
+
+    expect(preview).not.toBeNull()
+    expect(preview?.targetCellIds).toEqual(expect.arrayContaining([anchorCellId, neighborCellId]))
+    expect(preview?.changedCellCount ?? 0).toBeGreaterThanOrEqual(2)
+
+    const filled = paintEditorBucketFill(world, anchorCellId, 'water')
+
+    expect(filled.cells[anchorCellId].kind).toBe('water')
+    expect(filled.cells[neighborCellId].kind).toBe('water')
   })
 })

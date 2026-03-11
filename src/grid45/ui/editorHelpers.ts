@@ -22,6 +22,11 @@ export type EditorRegionPaintPreview = {
   newCellCount: number
   changedCellCount: number
 }
+export type EditorBucketFillPreview = {
+  anchorCellId: number
+  targetCellIds: number[]
+  changedCellCount: number
+}
 
 const customAreaDag: AreaDag = {
   nodes: [],
@@ -55,6 +60,19 @@ function firstFloorCellId(world: MazeWorld): number {
 
 function hasMonsterAtCell(world: MazeWorld, cellId: number): boolean {
   return world.initialMonsters.some((monster) => monster.cellId === cellId)
+}
+
+function isBucketFillTool(tool: EditorPaintTool): tool is PaintableCellKind {
+  return (
+    tool === 'floor' ||
+    tool === 'wall' ||
+    tool === 'toggle-floor' ||
+    tool === 'toggle-wall' ||
+    tool === 'water' ||
+    tool === 'fire' ||
+    tool === 'dirt' ||
+    tool === 'gravel'
+  )
 }
 
 export function cloneMazeWorld(world: MazeWorld): MazeWorld {
@@ -303,6 +321,33 @@ export function previewEditorRegionPaint(
   return collectEditorRegionPaintTargets(world, anchorCellId, mode)
 }
 
+export function canBucketFillEditorTool(tool: EditorPaintTool): boolean {
+  return isBucketFillTool(tool)
+}
+
+export function previewEditorBucketFill(
+  world: MazeWorld,
+  anchorCellId: number,
+  tool: EditorPaintTool,
+): EditorBucketFillPreview | null {
+  if (!isBucketFillTool(tool)) return null
+
+  const targetCellIds = collectTerrainRegionCellIds(world, anchorCellId)
+  if (targetCellIds.length === 0) return null
+
+  const changedCellCount = targetCellIds.reduce((count, cellId) => {
+    const cell = world.cells[cellId]
+    const willChange = cell.kind !== tool || cell.feature !== 'none' || hasMonsterAtCell(world, cellId)
+    return count + (willChange ? 1 : 0)
+  }, 0)
+
+  return {
+    anchorCellId,
+    targetCellIds,
+    changedCellCount,
+  }
+}
+
 export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   const nextWorld = cloneMazeWorld(world)
   ensureEditorBoundaryShell(nextWorld)
@@ -464,6 +509,29 @@ export function paintEditorRegion(
   }
 
   return nextWorld
+}
+
+export function paintEditorBucketFill(
+  world: MazeWorld,
+  anchorCellId: number,
+  tool: EditorPaintTool,
+): MazeWorld {
+  if (!isBucketFillTool(tool)) return world
+
+  const preview = previewEditorBucketFill(world, anchorCellId, tool)
+  if (!preview || preview.changedCellCount === 0) return world
+
+  const nextWorld = cloneMazeWorld(world)
+  const targetCellIdSet = new Set(preview.targetCellIds)
+  nextWorld.initialMonsters = nextWorld.initialMonsters.filter((monster) => !targetCellIdSet.has(monster.cellId))
+
+  for (const cellId of preview.targetCellIds) {
+    const cell = nextWorld.cells[cellId]
+    cell.kind = tool
+    cell.feature = 'none'
+  }
+
+  return normalizeEditorWorld(nextWorld)
 }
 
 export function rotateEditorMobAtCell(world: MazeWorld, cellId: number, delta: -1 | 1): MazeWorld {

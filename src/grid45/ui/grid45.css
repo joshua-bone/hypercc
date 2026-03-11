@@ -321,12 +321,12 @@ body {
   top: 92px;
   left: 16px;
   z-index: 2;
-  width: min(420px, calc(100% - 32px));
+  width: min(412px, calc(100% - 32px));
   max-height: calc(100% - 108px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 12px;
   border: 1px solid rgba(241, 234, 216, 0.16);
   border-radius: 18px;
   background: rgba(7, 11, 15, 0.78);
@@ -364,8 +364,8 @@ body {
 }
 
 .grid45StatListEditor {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 2px 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px 10px;
   margin-top: 0;
 }
 
@@ -505,6 +505,15 @@ body {
   font-size: 12px;
 }
 
+.grid45TogglePill {
+  min-height: 34px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 999px;
+  background: rgba(12, 17, 23, 0.88);
+}
+
 .grid45MetaGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -528,7 +537,8 @@ body {
 
 .grid45TextInput {
   min-width: 0;
-  padding: 7px 10px;
+  min-height: 34px;
+  padding: 0 10px;
   border: 1px solid rgba(241, 234, 216, 0.16);
   border-radius: 10px;
   background: rgba(12, 17, 23, 0.9);
@@ -623,8 +633,12 @@ body {
 }
 
 .grid45ButtonCompact {
-  padding: 7px 10px;
+  min-height: 34px;
+  padding: 0 12px;
   font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .grid45Controls {
@@ -637,9 +651,135 @@ body {
 
 .grid45EditorActionGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   width: 100%;
+}
+
+.grid45EditorToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.grid45SegmentedControl {
+  flex: 1 1 180px;
+  min-width: 180px;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(241, 234, 216, 0.16);
+  border-radius: 999px;
+  background: rgba(12, 17, 23, 0.88);
+}
+
+.grid45SegmentedButton {
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.grid45SegmentedButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.grid45SegmentedButton:hover:not(:disabled) {
+  background: rgba(241, 234, 216, 0.08);
+}
+
+.grid45SegmentedButton:focus-visible,
+.grid45EditorMenuSummary:focus-visible {
+  outline: 2px solid rgba(255, 227, 157, 0.92);
+  outline-offset: 2px;
+}
+
+.grid45SegmentedButtonActive {
+  background: rgba(200, 169, 107, 0.24);
+  color: #ffe39d;
+}
+
+.grid45EditorMenuRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.grid45EditorMenu {
+  min-width: 0;
+  border: 1px solid rgba(241, 234, 216, 0.12);
+  border-radius: 12px;
+  background: rgba(12, 17, 23, 0.52);
+}
+
+.grid45EditorMenu[open] {
+  background: rgba(12, 17, 23, 0.82);
+}
+
+.grid45EditorMenuSummary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 11px;
+  color: rgba(241, 234, 216, 0.88);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.grid45EditorMenuSummary:hover {
+  color: #f6efde;
+}
+
+.grid45EditorMenuSummary::-webkit-details-marker {
+  display: none;
+}
+
+.grid45EditorMenuSummary::after {
+  content: '▾';
+  color: rgba(241, 234, 216, 0.5);
+  font-size: 12px;
+  transition: transform 120ms ease;
+}
+
+.grid45EditorMenu[open] .grid45EditorMenuSummary::after {
+  transform: rotate(180deg);
+}
+
+.grid45EditorMenuBody {
+  display: grid;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.grid45EditorMenuMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: rgba(241, 234, 216, 0.64);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid45EditorBlankRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: end;
 }
 
 .grid45CompactField {
@@ -653,7 +793,8 @@ body {
 .grid45SelectCompact {
   min-width: 0;
   width: 100%;
-  padding: 7px 10px;
+  min-height: 34px;
+  padding: 0 10px;
 }
 
 .grid45MonsterCompactGrid {
@@ -706,7 +847,7 @@ body {
 }
 
 .grid45PaletteCompact {
-  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   gap: 4px;
 }
 
@@ -814,6 +955,7 @@ body {
   justify-content: space-between;
   gap: 6px;
   min-width: 0;
+  min-height: 40px;
   padding: 4px 6px;
   border: 1px solid rgba(241, 234, 216, 0.1);
   border-radius: 9px;
@@ -828,16 +970,17 @@ body {
 }
 
 .grid45BrushPreview {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   image-rendering: pixelated;
   flex: 0 0 auto;
 }
 
 .grid45BrushText {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   min-width: 0;
 }
 
@@ -853,6 +996,20 @@ body {
   color: #f6efde;
   font-size: 11px;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid45BrushFacing {
+  padding: 2px 6px;
+  border: 1px solid rgba(94, 160, 198, 0.3);
+  border-radius: 999px;
+  color: #9dd8f2;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .grid45BrushButtons {
@@ -1045,8 +1202,15 @@ body {
   .grid45StatListEditor,
   .grid45EditorActionGrid,
   .grid45BrushGrid,
-  .grid45MetaGrid {
+  .grid45MetaGrid,
+  .grid45EditorMenuRow,
+  .grid45EditorBlankRow {
     grid-template-columns: 1fr;
+  }
+
+  .grid45EditorToolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .grid45DagPanel {
