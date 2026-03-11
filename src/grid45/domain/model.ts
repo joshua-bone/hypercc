@@ -112,7 +112,6 @@ export type GameState = {
   hasFireBoots: boolean
   socketCleared: boolean
   togglePhase: boolean
-  hintTriggerCount: number
   playerDead: boolean
   levelComplete: boolean
   world: MazeWorld

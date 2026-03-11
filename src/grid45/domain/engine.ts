@@ -93,7 +93,6 @@ export function createInitialGameState(world: MazeWorld): GameState {
     hasFireBoots: false,
     socketCleared: false,
     togglePhase: false,
-    hintTriggerCount: 0,
     playerDead: false,
     levelComplete: false,
     world,
@@ -464,7 +463,6 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
   let hasFireBoots = state.hasFireBoots
   let socketCleared = state.socketCleared
   let togglePhase = state.togglePhase
-  let hintTriggerCount = state.hintTriggerCount
   let playerDead = state.playerDead
   let levelComplete = state.levelComplete
 
@@ -562,9 +560,6 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           if (targetCell.feature === 'socket') {
             socketCleared = true
           }
-          if (targetCell.feature === 'hint') {
-            hintTriggerCount += 1
-          }
           if (targetCell.feature === 'green-button') {
             togglePhase = !togglePhase
           }
@@ -635,9 +630,6 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
 
         if (targetCell.feature === 'socket') {
           socketCleared = true
-        }
-        if (targetCell.feature === 'hint') {
-          hintTriggerCount += 1
         }
         if (targetCell.feature === 'green-button') {
           togglePhase = !togglePhase
@@ -717,7 +709,6 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
     hasFireBoots,
     socketCleared,
     togglePhase,
-    hintTriggerCount,
     playerDead,
     levelComplete,
   }

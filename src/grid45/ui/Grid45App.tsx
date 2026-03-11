@@ -329,32 +329,6 @@ function HelpModal({
   )
 }
 
-function HintModal({
-  text,
-  onClose,
-}: {
-  text: string
-  onClose: () => void
-}) {
-  return (
-    <div className="grid45HelpOverlay" role="dialog" aria-modal="true" aria-labelledby="grid45HintTitle" onClick={onClose}>
-      <div className="grid45HelpModal grid45HintModal" onClick={(event) => event.stopPropagation()}>
-        <div className="grid45HelpHeader">
-          <div id="grid45HintTitle" className="grid45HelpTitle">Hint</div>
-          <button className="grid45Button grid45HelpClose" type="button" onClick={onClose} aria-label="Close hint">
-            Close
-          </button>
-        </div>
-        <div className="grid45HintBody">
-          {text.split(/\n+/).filter((line) => line.trim().length > 0).map((line, index) => (
-            <p key={`${index}-${line}`} className="grid45HintText">{line}</p>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function HintEditorModal({
   value,
   onChange,
@@ -390,6 +364,98 @@ function HintEditorModal({
         </div>
       </div>
     </div>
+  )
+}
+
+function wrapHintArcLines(text: string, maxCharsPerLine: number, maxLines: number): string[] {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (normalized.length === 0) return []
+
+  const words = normalized.split(' ')
+  const lines: string[] = []
+  let currentLine = ''
+
+  const truncateLine = (line: string): string => {
+    if (line.length <= maxCharsPerLine) return line
+    return `${line.slice(0, Math.max(1, maxCharsPerLine - 1)).trimEnd()}…`
+  }
+
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]
+    const candidate = currentLine.length === 0 ? word : `${currentLine} ${word}`
+    if (candidate.length <= maxCharsPerLine || currentLine.length === 0) {
+      currentLine = candidate
+      continue
+    }
+
+    lines.push(currentLine.trim())
+    if (lines.length === maxLines - 1) {
+      currentLine = [word, ...words.slice(index + 1)].join(' ')
+      break
+    }
+    currentLine = word
+  }
+
+  if (currentLine.trim().length > 0) {
+    lines.push(truncateLine(currentLine.trim()))
+  }
+
+  return lines.slice(0, maxLines)
+}
+
+function bottomArcPath(frame: Grid45DiskFrame, radius: number, startDeg: number, endDeg: number, segments = 48): string {
+  const points: string[] = []
+  for (let index = 0; index <= segments; index += 1) {
+    const t = index / segments
+    const angle = ((startDeg + (endDeg - startDeg) * t) * Math.PI) / 180
+    const x = frame.centerX + Math.cos(angle) * radius
+    const y = frame.centerY + Math.sin(angle) * radius
+    points.push(`${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`)
+  }
+  return points.join(' ')
+}
+
+function CircularHintText({
+  frame,
+  text,
+}: {
+  frame: Grid45DiskFrame
+  text: string
+}) {
+  const baseFontSize = Math.max(13, Math.min(22, frame.diskRadius * 0.048))
+  let fontSize = baseFontSize
+  let lineGap = fontSize * 1.18
+  let lines = wrapHintArcLines(text, Math.max(14, Math.floor((frame.diskRadius * 2.45) / (fontSize * 0.56))), 4)
+
+  while (lines.length > 4 && fontSize > 13) {
+    fontSize -= 1
+    lineGap = fontSize * 1.18
+    lines = wrapHintArcLines(text, Math.max(14, Math.floor((frame.diskRadius * 2.45) / (fontSize * 0.56))), 4)
+  }
+
+  if (lines.length === 0) return null
+
+  const outerRadius = frame.diskRadius + fontSize * 1.65
+
+  return (
+    <svg className="grid45HintArcOverlay" aria-hidden="true">
+      <defs>
+        {lines.map((_, index) => (
+          <path
+            key={`hint-arc-${index}`}
+            id={`grid45HintArc-${index}`}
+            d={bottomArcPath(frame, outerRadius + index * lineGap, 158, 22)}
+          />
+        ))}
+      </defs>
+      {lines.map((line, index) => (
+        <text key={`hint-line-${index}`} className="grid45HintArcText" style={{ fontSize }}>
+          <textPath href={`#grid45HintArc-${index}`} startOffset="50%" textAnchor="middle">
+            {line}
+          </textPath>
+        </text>
+      ))}
+    </svg>
   )
 }
 
@@ -599,8 +665,6 @@ export default function Grid45App() {
   })
   const editorCameraCenterRef = useRef<Vec2 | null>(null)
   const editorCameraAngleRef = useRef(0)
-  const playHintTriggerRef = useRef(0)
-  const playtestHintTriggerRef = useRef(0)
   const [playSession] = useState(createSession)
   const [playSnapshot, setPlaySnapshot] = useState<GameState>(() => playSession.getSnapshot())
   const [playtestSession, setPlaytestSession] = useState<Grid45Session | null>(null)
@@ -633,16 +697,20 @@ export default function Grid45App() {
   const [editorRotateIntent, setEditorRotateIntent] = useState<-1 | 0 | 1>(0)
   const [editorIoStatus, setEditorIoStatus] = useState<EditorIoStatus | null>(null)
   const [editorDropFrame, setEditorDropFrame] = useState<Grid45DiskFrame | null>(null)
-  const [hintOpenText, setHintOpenText] = useState<string | null>(null)
   const [editorHintOpen, setEditorHintOpen] = useState(false)
   const showDevToggle = import.meta.env.DEV
   const showPlayEndOverlay = activeTab === 'play' && (playSnapshot.levelComplete || playSnapshot.playerDead)
   const showPlaytestEndOverlay = activeTab === 'editor' && !!playtestSnapshot && (playtestSnapshot.levelComplete || playtestSnapshot.playerDead)
-  const overlayOpen = helpOpen || hintOpenText !== null || editorHintOpen
+  const overlayOpen = helpOpen || editorHintOpen
   const endTitle = playSnapshot.levelComplete ? 'You Win!' : 'You Died!'
   const playtestEndTitle = playtestSnapshot?.levelComplete ? 'You Win!' : 'You Lose!'
   const editorPreviewState = createInitialGameState(editorWorld)
   const currentSceneState = activeTab === 'play' ? playSnapshot : playtestSnapshot ?? editorPreviewState
+  const hintSnapshot = activeTab === 'play' ? playSnapshot : playtestSnapshot
+  const radialHintText =
+    hintSnapshot && hintSnapshot.world.cells[hintSnapshot.playerCellId]?.feature === 'hint'
+      ? hintSnapshot.world.hint?.trim() ?? ''
+      : ''
   const chipsRemaining = playSnapshot.remainingChipCellIds.size
   const antTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'ant').length
   const pinkBallTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'pink-ball').length
@@ -909,7 +977,6 @@ export default function Grid45App() {
     setPlaytestSession(null)
     setPlaytestSnapshot(null)
     setEditorHistory([])
-    setHintOpenText(null)
     setEditorHintOpen(false)
     editorCameraCenterRef.current = nextCenter
     editorCameraAngleRef.current = 0
@@ -1072,8 +1139,6 @@ export default function Grid45App() {
       event.preventDefault()
       if (editorHintOpen) {
         setEditorHintOpen(false)
-      } else if (hintOpenText !== null) {
-        setHintOpenText(null)
       } else {
         setHelpOpen(false)
       }
@@ -1083,7 +1148,7 @@ export default function Grid45App() {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [overlayOpen, editorHintOpen, hintOpenText, playSession, playtestSession])
+  }, [overlayOpen, editorHintOpen, playSession, playtestSession])
 
   useEffect(() => {
     if (!tileset) return
@@ -1116,37 +1181,6 @@ export default function Grid45App() {
   useEffect(() => {
     if (activeTab !== 'editor' || playtestSession) setEditorDropFrame(null)
   }, [activeTab, playtestSession])
-
-  useEffect(() => {
-    const nextTriggerCount = playSnapshot.hintTriggerCount
-    if (nextTriggerCount <= playHintTriggerRef.current) {
-      playHintTriggerRef.current = nextTriggerCount
-      return
-    }
-
-    playHintTriggerRef.current = nextTriggerCount
-    if (activeTab !== 'play' || playSnapshot.playerDead || playSnapshot.levelComplete) return
-    const hintText = playSnapshot.world.hint?.trim()
-    if (hintText) setHintOpenText(hintText)
-  }, [activeTab, playSnapshot.hintTriggerCount, playSnapshot.levelComplete, playSnapshot.playerDead, playSnapshot.world.hint])
-
-  useEffect(() => {
-    const nextTriggerCount = playtestSnapshot?.hintTriggerCount ?? 0
-    if (nextTriggerCount <= playtestHintTriggerRef.current) {
-      playtestHintTriggerRef.current = nextTriggerCount
-      return
-    }
-
-    playtestHintTriggerRef.current = nextTriggerCount
-    if (activeTab !== 'editor' || !playtestSnapshot || playtestSnapshot.playerDead || playtestSnapshot.levelComplete) return
-    const hintText = playtestSnapshot.world.hint?.trim()
-    if (hintText) setHintOpenText(hintText)
-  }, [activeTab, playtestSnapshot])
-
-  useEffect(() => {
-    if (!showPlayEndOverlay && !showPlaytestEndOverlay) return
-    setHintOpenText(null)
-  }, [showPlayEndOverlay, showPlaytestEndOverlay])
 
   useEffect(() => {
     if (!stepModeEnabled) return
@@ -1827,10 +1861,10 @@ export default function Grid45App() {
         </div>
       ) : null}
       {helpOpen ? <HelpModal title={helpTitle} sections={helpSections} onClose={() => setHelpOpen(false)} /> : null}
-      {hintOpenText !== null ? <HintModal text={hintOpenText} onClose={() => setHintOpenText(null)} /> : null}
       {editorHintOpen ? <HintEditorModal value={editorWorld.hint ?? ''} onChange={(value) => updateEditorMetadata('hint', value)} onClose={() => setEditorHintOpen(false)} /> : null}
       {activeTab === 'play' && showDevToggle && showDagValidator ? <DagValidatorPanel ref={dagPanelRef} snapshot={playSnapshot} /> : null}
       {orbitFrame && orbitGroups.length > 0 ? <CircularInventoryRing frame={orbitFrame} groups={orbitGroups} /> : null}
+      {orbitFrame && radialHintText.length > 0 ? <CircularHintText frame={orbitFrame} text={radialHintText} /> : null}
 
       {activeTab === 'play' ? (
         <div ref={hudRef} className="grid45Hud">
