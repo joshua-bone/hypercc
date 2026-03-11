@@ -406,8 +406,8 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
   }
 
   nextWorld.chipCellIds = nextWorld.cells.filter((cell) => cell.feature === 'chip').map((cell) => cell.id)
-  nextWorld.socketCellId = nextWorld.cells.find((cell) => cell.feature === 'socket')?.id ?? nextWorld.startCellId
-  nextWorld.exitCellId = nextWorld.cells.find((cell) => cell.feature === 'exit')?.id ?? nextWorld.startCellId
+  nextWorld.socketCellId = nextWorld.cells.find((cell) => cell.feature === 'socket')?.id ?? -1
+  nextWorld.exitCellId = nextWorld.cells.find((cell) => cell.feature === 'exit')?.id ?? -1
   nextWorld.areaDag = customAreaDag
 
   return nextWorld

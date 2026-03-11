@@ -71,6 +71,15 @@ describe('editorHelpers', () => {
     expect(countEditorMapCells(shrunk)).toBe(countEditorMapCells(grown) - shrinkDelta)
   })
 
+  it('keeps missing socket and exit ids unset on blank editor worlds', () => {
+    const world = createEditorWorld()
+
+    expect(world.cells.every((cell) => cell.feature !== 'socket')).toBe(true)
+    expect(world.cells.every((cell) => cell.feature !== 'exit')).toBe(true)
+    expect(world.socketCellId).toBe(-1)
+    expect(world.exitCellId).toBe(-1)
+  })
+
   it('previews and paints region border expansion into only non-map cells', () => {
     let world = createEditorWorld()
     const anchorCellId = collectEditorBoundaryCellIds(world)[0]

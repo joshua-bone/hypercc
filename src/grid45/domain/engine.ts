@@ -579,7 +579,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
             recoveryTicks = 0
             lastOutcome = 'dead'
           } else {
-            levelComplete = targetId === state.world.exitCellId
+            levelComplete = targetCell.feature === 'exit'
             recoveryTicks = levelComplete ? 0 : 1
             lastOutcome = levelComplete ? 'completed' : 'moved'
           }
@@ -650,7 +650,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           recoveryTicks = 0
           lastOutcome = 'dead'
         } else {
-          levelComplete = targetId === state.world.exitCellId
+          levelComplete = targetCell.feature === 'exit'
           recoveryTicks = levelComplete ? 0 : 1
           lastOutcome = levelComplete ? 'completed' : 'moved'
         }

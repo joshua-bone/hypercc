@@ -291,8 +291,8 @@ function buildWorldFromOfficialLevel(level: OfficialLevelFile, options?: LoadLev
     cells,
     startCellId,
     chipCellIds,
-    socketCellId: cells.find((cell) => cell.feature === 'socket')?.id ?? startCellId,
-    exitCellId: cells.find((cell) => cell.feature === 'exit')?.id ?? startCellId,
+    socketCellId: cells.find((cell) => cell.feature === 'socket')?.id ?? -1,
+    exitCellId: cells.find((cell) => cell.feature === 'exit')?.id ?? -1,
     areaDag: createCustomAreaDag('Loaded authored level; DAG validation unavailable.'),
     initialMonsters: monsters,
   }
