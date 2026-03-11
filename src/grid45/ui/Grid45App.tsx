@@ -403,6 +403,31 @@ function wrapHintArcLines(text: string, maxCharsPerLine: number, maxLines: numbe
   return lines.slice(0, maxLines)
 }
 
+type CircularHintLayout = {
+  fontSize: number
+  lineGap: number
+  lines: string[]
+  outerRadius: number
+}
+
+function maxHintArcChars(frame: Grid45DiskFrame, fontSize: number): number {
+  return Math.max(14, Math.floor((frame.diskRadius * 2.45) / (fontSize * 0.56)))
+}
+
+function measureCircularHintLayout(frame: Grid45DiskFrame, text: string): CircularHintLayout | null {
+  const fontSize = Math.max(13, Math.min(22, frame.diskRadius * 0.048))
+  const lineGap = fontSize * 1.18
+  const lines = wrapHintArcLines(text, maxHintArcChars(frame, fontSize), 4)
+  if (lines.length === 0) return null
+
+  return {
+    fontSize,
+    lineGap,
+    lines,
+    outerRadius: frame.diskRadius + fontSize * 1.65,
+  }
+}
+
 function bottomArcPath(frame: Grid45DiskFrame, radius: number, startDeg: number, endDeg: number, segments = 48): string {
   const points: string[] = []
   for (let index = 0; index <= segments; index += 1) {
@@ -422,20 +447,9 @@ function CircularHintText({
   frame: Grid45DiskFrame
   text: string
 }) {
-  const baseFontSize = Math.max(13, Math.min(22, frame.diskRadius * 0.048))
-  let fontSize = baseFontSize
-  let lineGap = fontSize * 1.18
-  let lines = wrapHintArcLines(text, Math.max(14, Math.floor((frame.diskRadius * 2.45) / (fontSize * 0.56))), 4)
-
-  while (lines.length > 4 && fontSize > 13) {
-    fontSize -= 1
-    lineGap = fontSize * 1.18
-    lines = wrapHintArcLines(text, Math.max(14, Math.floor((frame.diskRadius * 2.45) / (fontSize * 0.56))), 4)
-  }
-
-  if (lines.length === 0) return null
-
-  const outerRadius = frame.diskRadius + fontSize * 1.65
+  const layout = measureCircularHintLayout(frame, text)
+  if (!layout) return null
+  const { fontSize, lineGap, lines, outerRadius } = layout
 
   return (
     <svg className="grid45HintArcOverlay" aria-hidden="true">
@@ -536,6 +550,38 @@ function isFileDrag(event: ReactDragEvent<HTMLElement>): boolean {
 
 function pointInDisk(frame: Grid45DiskFrame, x: number, y: number): boolean {
   return Math.hypot(x - frame.centerX, y - frame.centerY) <= frame.diskRadius
+}
+
+function addHintViewportInset(
+  canvas: HTMLCanvasElement | null,
+  viewportInset: NonNullable<Grid45RenderOptions['viewportInset']>,
+  hintText: string,
+): NonNullable<Grid45RenderOptions['viewportInset']> {
+  if (!canvas || hintText.trim().length === 0) return viewportInset
+
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return viewportInset
+
+  const safeBottom = rect.height - viewportInset.bottom - Math.max(8, RENDER_SAFE_MARGIN * 0.4)
+  let adjustedInset = { ...viewportInset }
+
+  for (let iteration = 0; iteration < 2; iteration += 1) {
+    const frame = computeGrid45DiskFrame(rect.width, rect.height, adjustedInset)
+    const layout = measureCircularHintLayout(frame, hintText)
+    if (!layout) break
+
+    const lastLineRadius = layout.outerRadius + (layout.lines.length - 1) * layout.lineGap
+    const textBottom = frame.centerY + lastLineRadius + layout.fontSize * 0.95
+    const overflow = textBottom - safeBottom
+    if (overflow <= 0.5) break
+
+    adjustedInset = {
+      ...adjustedInset,
+      bottom: adjustedInset.bottom + Math.ceil(overflow),
+    }
+  }
+
+  return adjustedInset
 }
 
 function describeGate(edge: GameState['world']['areaDag']['edges'][number]): string {
@@ -1061,9 +1107,14 @@ export default function Grid45App() {
     return inset
   }
 
+  const measureSceneViewportInset = (): NonNullable<Grid45RenderOptions['viewportInset']> => {
+    const inset = measureViewportInset()
+    return addHintViewportInset(canvasRef.current, inset, radialHintText)
+  }
+
   const buildRenderOptions = (): Grid45RenderOptions => {
     const options: Grid45RenderOptions = {
-      viewportInset: measureViewportInset(),
+      viewportInset: measureSceneViewportInset(),
     }
 
     if (activeTab === 'editor' && playtestSnapshot === null) {
@@ -1084,7 +1135,7 @@ export default function Grid45App() {
         ? inventoryOrbitGroups(playtestInventoryKeys, playtestInventoryBoots, playtestInventoryChips)
         : []
   void viewportVersion
-  const orbitFrame = orbitSnapshot ? orbitFrameForCanvas(canvasRef.current, measureViewportInset()) : null
+  const orbitFrame = orbitSnapshot ? orbitFrameForCanvas(canvasRef.current, measureSceneViewportInset()) : null
 
   useEffect(() => {
     let active = true
