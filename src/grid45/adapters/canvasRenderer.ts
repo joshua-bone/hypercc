@@ -28,6 +28,10 @@ export type Grid45RenderOptions = {
   cameraCellId?: number
   cameraCenter?: Vec2
   cameraAngle?: number
+  transition?: {
+    fromState: GameState
+    progress: number
+  }
   highlightCellId?: number | null
   previewCellId?: number | null
   previewCellIds?: Iterable<number>
@@ -53,6 +57,44 @@ function midpoint(a: Vec2, b: Vec2): Vec2 {
   return {
     x: (a.x + b.x) / 2,
     y: (a.y + b.y) / 2,
+  }
+}
+
+function lerp(a: number, b: number, progress: number): number {
+  return a + (b - a) * progress
+}
+
+function lerpVec2(a: Vec2, b: Vec2, progress: number): Vec2 {
+  return {
+    x: lerp(a.x, b.x, progress),
+    y: lerp(a.y, b.y, progress),
+  }
+}
+
+function normalizeAngle(angle: number): number {
+  let nextAngle = angle
+  while (nextAngle <= -Math.PI) nextAngle += Math.PI * 2
+  while (nextAngle > Math.PI) nextAngle -= Math.PI * 2
+  return nextAngle
+}
+
+function lerpAngle(fromAngle: number, toAngle: number, progress: number): number {
+  const delta = normalizeAngle(toAngle - fromAngle)
+  return normalizeAngle(fromAngle + delta * progress)
+}
+
+function projectWorldPoint(
+  point: Vec2,
+  cameraCenter: Vec2,
+  cameraAngle: number,
+  centerX: number,
+  centerY: number,
+  radius: number,
+): ScreenPoint {
+  const viewPoint = toCameraView(point, cameraCenter, cameraAngle)
+  return {
+    x: centerX + viewPoint.x * radius,
+    y: centerY - viewPoint.y * radius,
   }
 }
 
@@ -537,6 +579,34 @@ function playerSpriteForState(state: GameState, tileset: Grid45Tileset): CanvasI
   return tileset.playerSprites[state.playerFacing]
 }
 
+function spriteSizeForShape(shape: ProjectedShape | undefined, minimum: number, maximum: number, multiplier: number): number {
+  if (!shape) return minimum
+  const { minX, minY, maxX, maxY } = outlineBounds(shape.outline)
+  return Math.max(minimum, Math.min(maximum, Math.min(maxX - minX, maxY - minY) * multiplier))
+}
+
+function transitionForState(
+  state: GameState,
+  options?: Grid45RenderOptions,
+): { fromState: GameState; progress: number } | null {
+  const transition = options?.transition
+  if (!transition || transition.fromState.world !== state.world) return null
+  if (transition.progress <= 0 || transition.progress >= 1) return transition.progress >= 1 ? null : transition
+  return transition
+}
+
+function entityCenter(
+  state: GameState,
+  cellId: number,
+  transition: { fromState: GameState; progress: number } | null,
+  previousCellId?: number,
+): Vec2 {
+  if (!transition) return state.world.cells[cellId].center
+  const fromCellId = previousCellId ?? cellId
+  if (fromCellId === cellId) return state.world.cells[cellId].center
+  return lerpVec2(transition.fromState.world.cells[fromCellId].center, state.world.cells[cellId].center, transition.progress)
+}
+
 function drawCellSprite(
   ctx: CanvasRenderingContext2D,
   shape: ProjectedShape,
@@ -788,8 +858,21 @@ export function renderGrid45Scene(
   tileset?: Grid45Tileset | null,
   options?: Grid45RenderOptions,
 ): void {
-  const cameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
-  const cameraAngle = options?.cameraAngle ?? state.cameraAngle
+  const transition = transitionForState(state, options)
+  const targetCameraCenter = options?.cameraCenter ?? state.world.cells[options?.cameraCellId ?? state.playerCellId].center
+  const targetCameraAngle = options?.cameraAngle ?? state.cameraAngle
+  const cameraCenter =
+    transition && options?.cameraCenter === undefined
+      ? lerpVec2(
+          transition.fromState.world.cells[options?.cameraCellId ?? transition.fromState.playerCellId].center,
+          targetCameraCenter,
+          transition.progress,
+        )
+      : targetCameraCenter
+  const cameraAngle =
+    transition && options?.cameraAngle === undefined
+      ? lerpAngle(transition.fromState.cameraAngle, targetCameraAngle, transition.progress)
+      : targetCameraAngle
   const { diskRadius, centerX, centerY, projectedCells, projectedCellById } = projectWorldCells(state.world, cameraCenter, cameraAngle, width, height, {
     cameraCellId: options?.cameraCellId,
     previewCellId: options?.previewCellId,
@@ -844,11 +927,23 @@ export function renderGrid45Scene(
     }
   }
 
+  const previousMonsterById = transition ? new Map(transition.fromState.monsters.map((monster) => [monster.id, monster])) : new Map<number, MonsterState>()
+
   for (const monster of state.monsters) {
     const monsterShape = projectedCellById.get(monster.cellId)?.shape
-    if (!monsterShape) continue
+    const previousMonster = previousMonsterById.get(monster.id)
+    const previousMonsterShape = previousMonster ? projectedCellById.get(previousMonster.cellId)?.shape : undefined
+    const monsterRenderCenter = projectWorldPoint(
+      entityCenter(state, monster.cellId, transition, previousMonster?.cellId),
+      cameraCenter,
+      cameraAngle,
+      centerX,
+      centerY,
+      diskRadius,
+    )
 
-    if (monster.kind === 'dirt-block') {
+    if (monster.kind === 'dirt-block' && (!previousMonster || previousMonster.cellId === monster.cellId)) {
+      if (!monsterShape) continue
       if (tileset) {
         drawCellSprite(ctx, monsterShape, tileset.dirtBlockSprite)
       } else {
@@ -857,9 +952,8 @@ export function renderGrid45Scene(
       continue
     }
 
-    const monsterCenter = shapeCenter(monsterShape)
-    const { minX, minY, maxX, maxY } = outlineBounds(monsterShape.outline)
-    const spriteSize = Math.max(24, Math.min(68, Math.min(maxX - minX, maxY - minY) * 0.4))
+    if (!monsterShape && !previousMonsterShape) continue
+    const spriteSize = spriteSizeForShape(monsterShape ?? previousMonsterShape, 24, 68, monster.kind === 'dirt-block' ? 0.72 : 0.4)
 
     if (tileset) {
       const sprite = monsterBaseSprite(monster, tileset)
@@ -867,12 +961,12 @@ export function renderGrid45Scene(
       const facingVector = monsterFacingVector(monster, state, { cameraCenter, cameraAngle })
       ctx.imageSmoothingEnabled = false
       ctx.save()
-      ctx.translate(monsterCenter.x, monsterCenter.y)
+      ctx.translate(monsterRenderCenter.x, monsterRenderCenter.y)
       ctx.rotate(rotation)
       ctx.drawImage(sprite, -spriteSize / 2, -spriteSize / 2, spriteSize, spriteSize)
       ctx.restore()
       if (monster.kind === 'pink-ball' || monster.kind === 'fireball') {
-        drawPinkBallArrow(ctx, monsterCenter, facingVector, spriteSize)
+        drawPinkBallArrow(ctx, monsterRenderCenter, facingVector, spriteSize)
       }
     } else {
       ctx.fillStyle =
@@ -886,7 +980,7 @@ export function renderGrid45Scene(
                 ? '#f1c9f9'
                 : '#7b311d'
       ctx.beginPath()
-      ctx.arc(monsterCenter.x, monsterCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
+      ctx.arc(monsterRenderCenter.x, monsterRenderCenter.y, Math.max(3, spriteSize * 0.18), 0, 2 * Math.PI)
       ctx.fill()
     }
   }
@@ -926,23 +1020,29 @@ export function renderGrid45Scene(
 
   if (options?.showPlayer ?? true) {
     const playerShape = projectedCellById.get(state.playerCellId)?.shape
+    const previousPlayerShape = transition ? projectedCellById.get(transition.fromState.playerCellId)?.shape : undefined
+    const playerRenderCenter = projectWorldPoint(
+      entityCenter(state, state.playerCellId, transition, transition?.fromState.playerCellId),
+      cameraCenter,
+      cameraAngle,
+      centerX,
+      centerY,
+      diskRadius,
+    )
     if (playerShape && tileset) {
-      const { minX, minY, maxX, maxY } = outlineBounds(playerShape.outline)
-      const spriteSize = Math.max(36, Math.min(96, Math.min(maxX - minX, maxY - minY) * 0.42))
-      const playerCenterPoint = shapeCenter(playerShape)
+      const spriteSize = spriteSizeForShape(playerShape ?? previousPlayerShape, 36, 96, 0.42)
       ctx.imageSmoothingEnabled = false
       ctx.drawImage(
         playerSpriteForState(state, tileset),
-        playerCenterPoint.x - spriteSize / 2,
-        playerCenterPoint.y - spriteSize / 2,
+        playerRenderCenter.x - spriteSize / 2,
+        playerRenderCenter.y - spriteSize / 2,
         spriteSize,
         spriteSize,
       )
-    } else if (playerShape) {
-      const playerCenterPoint = shapeCenter(playerShape)
+    } else if (playerShape || previousPlayerShape) {
       ctx.fillStyle = '#2a1d00'
       ctx.beginPath()
-      ctx.arc(playerCenterPoint.x, playerCenterPoint.y, 5, 0, 2 * Math.PI)
+      ctx.arc(playerRenderCenter.x, playerRenderCenter.y, 5, 0, 2 * Math.PI)
       ctx.fill()
     }
   }

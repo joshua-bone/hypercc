@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { directions } from '../domain/directions'
+import { currentCellKind } from '../domain/model'
 import type { Grid45Tileset } from '../adapters/spriteAtlas'
 
 let pickedCellId = 0
@@ -114,6 +116,7 @@ vi.mock('../adapters/canvasRenderer', async () => {
 })
 
 import Grid45App from './Grid45App'
+import { renderGrid45Scene } from '../adapters/canvasRenderer'
 
 function editorStatValue(label: string): string {
   const statLabel = screen.getByText(label)
@@ -131,6 +134,7 @@ function mapCellCount(value: string): number {
 describe('Grid45App editor', () => {
   beforeEach(() => {
     pickedCellId = 0
+    vi.mocked(renderGrid45Scene).mockClear()
   })
 
   it('keeps typing directed into focused metadata fields', async () => {
@@ -167,6 +171,43 @@ describe('Grid45App editor', () => {
 
     await waitFor(() => {
       expect(screen.getByText((content) => content.includes('Δ'))).toBeInTheDocument()
+    })
+  })
+
+  it('passes a render transition when gameplay advances by one move tick', async () => {
+    render(<Grid45App />)
+
+    const renderCalls = vi.mocked(renderGrid45Scene).mock.calls
+    const initialCall = renderCalls[renderCalls.length - 1]
+    if (!initialCall) throw new Error('Expected an initial scene render.')
+    const initialState = initialCall[1]
+    const moveKeyByDirection = {
+      north: 'w',
+      east: 'd',
+      south: 's',
+      west: 'a',
+    } as const
+    const moveDirection = directions.find((direction) => {
+      const neighborId = initialState.world.cells[initialState.playerCellId].exits[direction]
+      if (neighborId === null) return false
+      const kind = currentCellKind(initialState.world.cells[neighborId].kind, initialState.togglePhase)
+      return kind === 'floor' || kind === 'toggle-floor' || kind === 'dirt' || kind === 'gravel'
+    })
+
+    if (!moveDirection) throw new Error('Expected a passable neighboring cell from the start position.')
+
+    fireEvent.keyDown(window, {
+      key: moveKeyByDirection[moveDirection],
+      bubbles: true,
+      cancelable: true,
+    })
+
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(renderGrid45Scene)
+          .mock.calls.some((call) => call[5]?.transition?.progress === 1 / 4),
+      ).toBe(true)
     })
   })
 

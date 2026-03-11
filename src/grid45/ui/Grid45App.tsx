@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { forwardRef, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
 import { computeGrid45DiskFrame, renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
@@ -45,6 +45,7 @@ const EDITOR_DRAG_PAN_SCALE = 1.08
 const DOUBLE_MIDDLE_CLICK_MS = 320
 const DOUBLE_MIDDLE_CLICK_DISTANCE = 8
 const RENDER_SAFE_MARGIN = 20
+const RENDER_INTERPOLATION_STEPS = 4
 
 const keyLabels: Record<KeyColor, string> = {
   blue: 'B',
@@ -160,6 +161,29 @@ type InventoryOrbitGroup = {
   centerAngleDeg: number
   stepDeg: number
   radiusOffset: number
+}
+
+type SceneRenderTransition = {
+  fromState: GameState
+  progress: number
+  frame: number
+  frameId: number | null
+}
+
+function sceneHasMotion(fromState: GameState, toState: GameState): boolean {
+  if (fromState.playerCellId !== toState.playerCellId) return true
+  if (fromState.cameraAngle !== toState.cameraAngle) return true
+  if (fromState.monsters.length !== toState.monsters.length) return true
+
+  const previousMonsterById = new Map(fromState.monsters.map((monster) => [monster.id, monster]))
+  return toState.monsters.some((monster) => {
+    const previousMonster = previousMonsterById.get(monster.id)
+    return !previousMonster || previousMonster.cellId !== monster.cellId || previousMonster.facing !== monster.facing
+  })
+}
+
+function shouldAnimateSceneTransition(fromState: GameState, toState: GameState): boolean {
+  return fromState.world === toState.world && toState.tick === fromState.tick + 1 && sceneHasMotion(fromState, toState)
 }
 
 function isMobTool(tool: EditorPaintTool): tool is 'ant' | 'pink-ball' | 'teeth' | 'tank' | 'glider' | 'fireball' {
@@ -883,6 +907,10 @@ export default function Grid45App() {
     y: 0,
     cellId: null,
   })
+  const playPreviousSnapshotRef = useRef<GameState | null>(null)
+  const playRenderTransitionRef = useRef<SceneRenderTransition | null>(null)
+  const playtestPreviousSnapshotRef = useRef<GameState | null>(null)
+  const playtestRenderTransitionRef = useRef<SceneRenderTransition | null>(null)
   const editorCameraCenterRef = useRef<Vec2 | null>(null)
   const editorCameraAngleRef = useRef(0)
   const editorWorldRef = useRef<MazeWorld | null>(null)
@@ -941,6 +969,50 @@ export default function Grid45App() {
   const clearEditorHover = () => {
     setEditorHoverCellId(null)
     setEditorHoverPreview(null)
+  }
+  const stopSceneTransition = (transitionRef: MutableRefObject<SceneRenderTransition | null>) => {
+    const activeTransition = transitionRef.current
+    if (activeTransition?.frameId !== null && activeTransition?.frameId !== undefined) {
+      window.cancelAnimationFrame(activeTransition.frameId)
+    }
+    transitionRef.current = null
+  }
+  const startSceneTransition = (
+    transitionRef: MutableRefObject<SceneRenderTransition | null>,
+    fromState: GameState,
+  ) => {
+    stopSceneTransition(transitionRef)
+
+    const transition: SceneRenderTransition = {
+      fromState,
+      progress: 1 / RENDER_INTERPOLATION_STEPS,
+      frame: 1,
+      frameId: null,
+    }
+
+    const step = () => {
+      const activeTransition = transitionRef.current
+      if (!activeTransition || activeTransition !== transition) return
+      if (activeTransition.frame >= RENDER_INTERPOLATION_STEPS) {
+        transitionRef.current = null
+        drawRef.current?.()
+        return
+      }
+
+      activeTransition.frame += 1
+      activeTransition.progress = activeTransition.frame / RENDER_INTERPOLATION_STEPS
+      drawRef.current?.()
+
+      if (activeTransition.frame >= RENDER_INTERPOLATION_STEPS) {
+        transitionRef.current = null
+        return
+      }
+
+      activeTransition.frameId = window.requestAnimationFrame(step)
+    }
+
+    transitionRef.current = transition
+    transition.frameId = window.requestAnimationFrame(step)
   }
   const chipsRemaining = playSnapshot.remainingChipCellIds.size
   const antTotal = playSnapshot.world.initialMonsters.filter((monster) => monster.kind === 'ant').length
@@ -1320,7 +1392,24 @@ export default function Grid45App() {
       viewportInset: measureSceneViewportInset(),
     }
 
-    if (activeTab === 'editor' && playtestSnapshot === null) {
+    if (activeTab === 'play') {
+      if (playRenderTransitionRef.current) {
+        options.transition = {
+          fromState: playRenderTransitionRef.current.fromState,
+          progress: playRenderTransitionRef.current.progress,
+        }
+      }
+      return options
+    }
+
+    if (playtestSnapshot !== null && playtestRenderTransitionRef.current) {
+      options.transition = {
+        fromState: playtestRenderTransitionRef.current.fromState,
+        progress: playtestRenderTransitionRef.current.progress,
+      }
+    }
+
+    if (playtestSnapshot === null) {
       options.cameraCenter = editorCameraCenter
       options.cameraAngle = editorCameraAngle
       options.highlightCellId = editorSelectedCellId
@@ -1376,6 +1465,34 @@ export default function Grid45App() {
   useEffect(() => {
     editorCameraAngleRef.current = editorCameraAngle
   }, [editorCameraAngle])
+
+  useEffect(() => {
+    const previousSnapshot = playPreviousSnapshotRef.current
+    if (previousSnapshot && shouldAnimateSceneTransition(previousSnapshot, playSnapshot)) {
+      startSceneTransition(playRenderTransitionRef, previousSnapshot)
+    } else {
+      stopSceneTransition(playRenderTransitionRef)
+    }
+    playPreviousSnapshotRef.current = playSnapshot
+  }, [playSnapshot])
+
+  useEffect(() => {
+    const currentSnapshot = playtestSnapshot
+    const previousSnapshot = playtestPreviousSnapshotRef.current
+    if (currentSnapshot && previousSnapshot && shouldAnimateSceneTransition(previousSnapshot, currentSnapshot)) {
+      startSceneTransition(playtestRenderTransitionRef, previousSnapshot)
+    } else {
+      stopSceneTransition(playtestRenderTransitionRef)
+    }
+    playtestPreviousSnapshotRef.current = currentSnapshot
+  }, [playtestSnapshot])
+
+  useEffect(() => {
+    return () => {
+      stopSceneTransition(playRenderTransitionRef)
+      stopSceneTransition(playtestRenderTransitionRef)
+    }
+  }, [])
 
   useEffect(() => {
     setEditorHoverPreview(null)
