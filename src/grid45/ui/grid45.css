@@ -213,6 +213,10 @@ body {
   width: min(560px, 100%);
 }
 
+.grid45BlankModal {
+  width: min(420px, 100%);
+}
+
 .grid45HintArcOverlay {
   position: absolute;
   inset: 0;
@@ -763,7 +767,7 @@ body {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  min-width: min(320px, calc(100vw - 72px));
+  min-width: min(240px, calc(100vw - 72px));
   padding: 0;
   border: 1px solid rgba(241, 234, 216, 0.16);
   border-radius: 14px;
@@ -780,6 +784,79 @@ body {
   display: grid;
   gap: 6px;
   padding: 10px;
+}
+
+.grid45EditorMenuList {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+}
+
+.grid45EditorMenuItem,
+.grid45EditorMenuInfoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+}
+
+.grid45EditorMenuItem {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.grid45EditorMenuItem:hover:not(:disabled) {
+  background: rgba(200, 169, 107, 0.16);
+}
+
+.grid45EditorMenuItem:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.grid45EditorMenuItem:focus-visible {
+  outline: 2px solid rgba(255, 227, 157, 0.92);
+  outline-offset: -1px;
+}
+
+.grid45EditorMenuItemLabel,
+.grid45EditorMenuSectionLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid45EditorMenuItemLabel {
+  color: #f1ead8;
+  font-size: 13px;
+}
+
+.grid45EditorMenuItemMeta,
+.grid45EditorMenuSectionLabel {
+  color: rgba(241, 234, 216, 0.54);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grid45EditorMenuInfoRow {
+  color: rgba(241, 234, 216, 0.84);
+}
+
+.grid45EditorMenuSeparator {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(241, 234, 216, 0.1);
 }
 
 .grid45EditorMenuMeta {

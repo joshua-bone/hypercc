@@ -138,7 +138,8 @@ describe('Grid45App editor', () => {
     render(<Grid45App />)
 
     await user.click(screen.getByRole('button', { name: 'Editor' }))
-    await user.click(screen.getByText('Level'))
+    await user.click(screen.getByRole('menuitem', { name: 'Level' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Level Settings...' }))
 
     const authorInput = screen.getByRole('textbox', { name: 'Author' })
     await user.type(authorInput, 'S')
