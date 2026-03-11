@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useRef, useState, type DragEvent as ReactDragEve
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
 import { computeGrid45DiskFrame, renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
-import { attachKeyboardIntent } from '../adapters/keyboardIntent'
+import { attachKeyboardIntent, isInteractiveKeyboardTarget } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
 import { moveCameraInView, orbitCameraAroundCenter } from '../domain/camera'
 import { directionFromKey } from '../domain/directions'
@@ -1166,6 +1166,7 @@ export default function Grid45App() {
     if (activeTab === 'play') {
       if (stepModeEnabled) {
         const onKeyDown = (event: KeyboardEvent) => {
+          if (isInteractiveKeyboardTarget(event.target)) return
           if (showPlayEndOverlay) return
 
           const direction = directionFromKey(event.key)
@@ -1195,6 +1196,7 @@ export default function Grid45App() {
 
       const detachKeyboard = attachKeyboardIntent(window, playSession.setIntent)
       const onKeyDown = (event: KeyboardEvent) => {
+        if (isInteractiveKeyboardTarget(event.target)) return
         if (!isSpaceKey(event)) return
         event.preventDefault()
         playSession.start()
@@ -1210,6 +1212,7 @@ export default function Grid45App() {
     if (playtestSession) {
       if (stepModeEnabled) {
         const onKeyDown = (event: KeyboardEvent) => {
+          if (isInteractiveKeyboardTarget(event.target)) return
           if (event.key === 'Escape') {
             event.preventDefault()
             playtestSession.stop()
@@ -1247,6 +1250,7 @@ export default function Grid45App() {
 
       const detachKeyboard = attachKeyboardIntent(window, playtestSession.setIntent)
       const onKeyDown = (event: KeyboardEvent) => {
+        if (isInteractiveKeyboardTarget(event.target)) return
         if (isSpaceKey(event)) {
           event.preventDefault()
           playtestSession.start()
@@ -1268,6 +1272,7 @@ export default function Grid45App() {
 
     const detachKeyboard = attachKeyboardIntent(window, setEditorIntent)
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isInteractiveKeyboardTarget(event.target)) return
       const rotationDelta = editorRotationDeltaFromKey(event)
       if ((event.ctrlKey || event.metaKey) && !event.shiftKey && (event.key === 'z' || event.key === 'Z')) {
         event.preventDefault()
@@ -1287,6 +1292,7 @@ export default function Grid45App() {
       }
     }
     const onKeyUp = (event: KeyboardEvent) => {
+      if (isInteractiveKeyboardTarget(event.target)) return
       if (event.key === 'q' || event.key === 'Q') {
         setEditorRotateIntent((value) => (value === -1 ? 0 : value))
       } else if (event.key === 'e' || event.key === 'E') {
