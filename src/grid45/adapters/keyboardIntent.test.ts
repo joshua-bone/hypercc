@@ -24,7 +24,7 @@ describe('keyboardIntent', () => {
     expect(isInteractiveKeyboardTarget(input)).toBe(true)
     expect(isInteractiveKeyboardTarget(textarea)).toBe(true)
     expect(isInteractiveKeyboardTarget(select)).toBe(true)
-    expect(isInteractiveKeyboardTarget(button)).toBe(true)
+    expect(isInteractiveKeyboardTarget(button)).toBe(false)
     expect(isInteractiveKeyboardTarget(editable)).toBe(true)
     expect(isInteractiveKeyboardTarget(plain)).toBe(false)
   })

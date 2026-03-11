@@ -9,7 +9,7 @@ function removeDirection(directions: Direction[], direction: Direction): void {
 export function isInteractiveKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
-  return target.closest('input, textarea, select, button, [contenteditable=""], [contenteditable="true"]') !== null
+  return target.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]') !== null
 }
 
 export function attachKeyboardIntent(target: Window, onIntentChange: (intent: MoveIntent) => void): () => void {

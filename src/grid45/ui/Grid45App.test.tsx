@@ -182,4 +182,48 @@ describe('Grid45App editor', () => {
       expect(mapCellCount(editorStatValue('Cells'))).toBe(initialCells)
     })
   })
+
+  it('handles Cmd/Ctrl-Z undo even after an editor button keeps focus', async () => {
+    const user = userEvent.setup()
+    render(<Grid45App />)
+
+    await user.click(screen.getByRole('button', { name: 'Editor' }))
+    const removeCellButton = screen.getByRole('button', { name: 'Remove Cell' })
+    await user.click(removeCellButton)
+
+    const canvas = document.querySelector('canvas')
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Expected editor canvas to exist.')
+
+    const initialCells = mapCellCount(editorStatValue('Cells'))
+
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      buttons: 1,
+      clientX: 120,
+      clientY: 120,
+      pointerId: 1,
+    })
+    fireEvent.pointerUp(canvas, {
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 120,
+      pointerId: 1,
+    })
+
+    await waitFor(() => {
+      expect(mapCellCount(editorStatValue('Cells'))).toBe(initialCells - 1)
+    })
+
+    fireEvent.keyDown(window, {
+      key: 'z',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    await waitFor(() => {
+      expect(mapCellCount(editorStatValue('Cells'))).toBe(initialCells)
+    })
+  })
 })
