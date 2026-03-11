@@ -728,6 +728,8 @@ export default function Grid45App() {
   })
   const editorCameraCenterRef = useRef<Vec2 | null>(null)
   const editorCameraAngleRef = useRef(0)
+  const editorWorldRef = useRef<MazeWorld | null>(null)
+  const editorSelectedCellIdRef = useRef<number | null>(null)
   const [playSession] = useState(createSession)
   const [playSnapshot, setPlaySnapshot] = useState<GameState>(() => playSession.getSnapshot())
   const [playtestSession, setPlaytestSession] = useState<Grid45Session | null>(null)
@@ -984,6 +986,8 @@ export default function Grid45App() {
   const restoreEditorFrame = (entry: EditorHistoryEntry) => {
     editorCameraCenterRef.current = entry.cameraCenter
     editorCameraAngleRef.current = entry.cameraAngle
+    editorWorldRef.current = entry.world
+    editorSelectedCellIdRef.current = entry.selectedCellId
     setEditorWorld(entry.world)
     setEditorSelectedCellId(entry.selectedCellId)
     clearEditorHover()
@@ -992,18 +996,24 @@ export default function Grid45App() {
   }
 
   const pushEditorUndo = () => {
+    const snapshotWorld = cloneMazeWorld(editorWorldRef.current ?? editorWorld)
+    const snapshotSelectedCellId = editorSelectedCellIdRef.current ?? editorSelectedCellId
+    const snapshotCameraCenter = editorCameraCenterRef.current ?? editorCameraCenter
+    const snapshotCameraAngle = editorCameraAngleRef.current
     setEditorHistory((history) => {
       const nextHistory = history.concat({
-        world: cloneMazeWorld(editorWorld),
-        selectedCellId: editorSelectedCellId,
-        cameraCenter: editorCameraCenter,
-        cameraAngle: editorCameraAngle,
+        world: snapshotWorld,
+        selectedCellId: snapshotSelectedCellId,
+        cameraCenter: snapshotCameraCenter,
+        cameraAngle: snapshotCameraAngle,
       })
       return nextHistory.slice(-EDITOR_UNDO_LIMIT)
     })
   }
 
   const undoEditor = () => {
+    paintDragRef.current = null
+    middleDragRef.current = null
     setEditorHistory((history) => {
       const previous = history[history.length - 1]
       if (!previous) return history
@@ -1164,6 +1174,11 @@ export default function Grid45App() {
         : []
   void viewportVersion
   const orbitFrame = orbitSnapshot ? orbitFrameForCanvas(canvasRef.current, measureSceneViewportInset()) : null
+
+  useEffect(() => {
+    editorWorldRef.current = editorWorld
+    editorSelectedCellIdRef.current = editorSelectedCellId
+  }, [editorWorld, editorSelectedCellId])
 
   useEffect(() => {
     let active = true
