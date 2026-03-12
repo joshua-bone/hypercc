@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
-import { computeGrid45DiskFrame, renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
+import { renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
 import { attachKeyboardIntent, isInteractiveKeyboardTarget } from '../adapters/keyboardIntent'
 import { loadGrid45Tileset, type Grid45Tileset } from '../adapters/spriteAtlas'
@@ -34,6 +34,7 @@ import {
   type EditorPaintTool,
   type EditorRegionPaintMode,
 } from './editorHelpers'
+import { createGrid45SceneLayout, EMPTY_SCENE_LAYOUT, measureCircularHintLayout, measureElementRect, sceneLayoutEquals, type Grid45SceneLayout } from './sceneLayout'
 import type { Vec2 } from '../../hyper/vec2'
 
 const MIN_MONSTER_COUNT = 0
@@ -325,7 +326,7 @@ function editorRegionPaintModeFromPointer(event: ReactPointerEvent<HTMLCanvasEle
   return event.metaKey || event.ctrlKey ? 'overwrite' : 'expand'
 }
 
-function editorPreviewBadgePosition(rect: DOMRect, clientX: number, clientY: number): { x: number; y: number } {
+function editorPreviewBadgePosition(rect: { width: number; height: number }, clientX: number, clientY: number): { x: number; y: number } {
   return {
     x: Math.max(12, Math.min(rect.width - 132, clientX + 16)),
     y: Math.max(18, Math.min(rect.height - 18, clientY - 18)),
@@ -333,7 +334,7 @@ function editorPreviewBadgePosition(rect: DOMRect, clientX: number, clientY: num
 }
 
 function createEditorHoverPreviewState(
-  rect: DOMRect,
+  rect: { width: number; height: number },
   clientX: number,
   clientY: number,
   previewCellIds: number[],
@@ -564,67 +565,6 @@ function BlankMapModal({
   )
 }
 
-function wrapHintArcLines(text: string, maxCharsPerLine: number, maxLines: number): string[] {
-  const normalized = text.replace(/\s+/g, ' ').trim()
-  if (normalized.length === 0) return []
-
-  const words = normalized.split(' ')
-  const lines: string[] = []
-  let currentLine = ''
-
-  const truncateLine = (line: string): string => {
-    if (line.length <= maxCharsPerLine) return line
-    return `${line.slice(0, Math.max(1, maxCharsPerLine - 1)).trimEnd()}…`
-  }
-
-  for (let index = 0; index < words.length; index += 1) {
-    const word = words[index]
-    const candidate = currentLine.length === 0 ? word : `${currentLine} ${word}`
-    if (candidate.length <= maxCharsPerLine || currentLine.length === 0) {
-      currentLine = candidate
-      continue
-    }
-
-    lines.push(currentLine.trim())
-    if (lines.length === maxLines - 1) {
-      currentLine = [word, ...words.slice(index + 1)].join(' ')
-      break
-    }
-    currentLine = word
-  }
-
-  if (currentLine.trim().length > 0) {
-    lines.push(truncateLine(currentLine.trim()))
-  }
-
-  return lines.slice(0, maxLines)
-}
-
-type CircularHintLayout = {
-  fontSize: number
-  lineGap: number
-  lines: string[]
-  outerRadius: number
-}
-
-function maxHintArcChars(frame: Grid45DiskFrame, fontSize: number): number {
-  return Math.max(14, Math.floor((frame.diskRadius * 2.45) / (fontSize * 0.56)))
-}
-
-function measureCircularHintLayout(frame: Grid45DiskFrame, text: string): CircularHintLayout | null {
-  const fontSize = Math.max(13, Math.min(22, frame.diskRadius * 0.048))
-  const lineGap = fontSize * 1.18
-  const lines = wrapHintArcLines(text, maxHintArcChars(frame, fontSize), 4)
-  if (lines.length === 0) return null
-
-  return {
-    fontSize,
-    lineGap,
-    lines,
-    outerRadius: frame.diskRadius + fontSize * 1.65,
-  }
-}
-
 function bottomArcPath(frame: Grid45DiskFrame, radius: number, startDeg: number, endDeg: number, segments = 48): string {
   const points: string[] = []
   for (let index = 0; index <= segments; index += 1) {
@@ -731,54 +671,12 @@ function inventoryOrbitGroups(keys: InventoryItem[], boots: InventoryItem[], chi
   ]
 }
 
-function orbitFrameForCanvas(
-  canvas: HTMLCanvasElement | null,
-  viewportInset: Grid45RenderOptions['viewportInset'],
-): Grid45DiskFrame | null {
-  if (!canvas) return null
-  const rect = canvas.getBoundingClientRect()
-  if (rect.width <= 0 || rect.height <= 0) return null
-  return computeGrid45DiskFrame(rect.width, rect.height, viewportInset)
-}
-
 function isFileDrag(event: ReactDragEvent<HTMLElement>): boolean {
   return Array.from(event.dataTransfer.types).includes('Files')
 }
 
 function pointInDisk(frame: Grid45DiskFrame, x: number, y: number): boolean {
   return Math.hypot(x - frame.centerX, y - frame.centerY) <= frame.diskRadius
-}
-
-function addHintViewportInset(
-  canvas: HTMLCanvasElement | null,
-  viewportInset: NonNullable<Grid45RenderOptions['viewportInset']>,
-  hintText: string,
-): NonNullable<Grid45RenderOptions['viewportInset']> {
-  if (!canvas || hintText.trim().length === 0) return viewportInset
-
-  const rect = canvas.getBoundingClientRect()
-  if (rect.width <= 0 || rect.height <= 0) return viewportInset
-
-  const safeBottom = rect.height - viewportInset.bottom - Math.max(8, RENDER_SAFE_MARGIN * 0.4)
-  let adjustedInset = { ...viewportInset }
-
-  for (let iteration = 0; iteration < 2; iteration += 1) {
-    const frame = computeGrid45DiskFrame(rect.width, rect.height, adjustedInset)
-    const layout = measureCircularHintLayout(frame, hintText)
-    if (!layout) break
-
-    const lastLineRadius = layout.outerRadius + (layout.lines.length - 1) * layout.lineGap
-    const textBottom = frame.centerY + lastLineRadius + layout.fontSize * 0.95
-    const overflow = textBottom - safeBottom
-    if (overflow <= 0.5) break
-
-    adjustedInset = {
-      ...adjustedInset,
-      bottom: adjustedInset.bottom + Math.ceil(overflow),
-    }
-  }
-
-  return adjustedInset
 }
 
 function describeGate(edge: GameState['world']['areaDag']['edges'][number]): string {
@@ -930,7 +828,7 @@ export default function Grid45App() {
   const [tankCount, setTankCount] = useState<number>(defaultTankCount)
   const [stepModeEnabled, setStepModeEnabled] = useState(false)
   const [seedInput, setSeedInput] = useState('')
-  const [viewportVersion, setViewportVersion] = useState(0)
+  const [sceneLayout, setSceneLayout] = useState<Grid45SceneLayout>(EMPTY_SCENE_LAYOUT)
   const [editorBlankSize, setEditorBlankSize] = useState<WorldSize>(defaultWorldSize)
   const [editorWorld, setEditorWorld] = useState<MazeWorld>(() => normalizeEditorWorld(cloneMazeWorld(playSession.getSnapshot().world)))
   const [editorHistory, setEditorHistory] = useState<EditorHistoryEntry[]>([])
@@ -949,7 +847,7 @@ export default function Grid45App() {
   const [editorIntent, setEditorIntent] = useState<MoveIntent>('stay')
   const [editorRotateIntent, setEditorRotateIntent] = useState<-1 | 0 | 1>(0)
   const [editorIoStatus, setEditorIoStatus] = useState<EditorIoStatus | null>(null)
-  const [editorDropFrame, setEditorDropFrame] = useState<Grid45DiskFrame | null>(null)
+  const [editorDropActive, setEditorDropActive] = useState(false)
   const [editorLevelOpen, setEditorLevelOpen] = useState(false)
   const [editorHintOpen, setEditorHintOpen] = useState(false)
   const [editorBlankOpen, setEditorBlankOpen] = useState(false)
@@ -1325,7 +1223,7 @@ export default function Grid45App() {
         text: error instanceof Error ? error.message : 'Failed to load level file.',
       })
     } finally {
-      setEditorDropFrame(null)
+      setEditorDropActive(false)
       if (editorFileInputRef.current) editorFileInputRef.current.value = ''
     }
   }
@@ -1337,59 +1235,24 @@ export default function Grid45App() {
     }))
   }
 
-  const measureViewportInset = (): NonNullable<Grid45RenderOptions['viewportInset']> => {
-    const appRect = appRef.current?.getBoundingClientRect()
-    if (!appRect) {
-      return { top: 0, right: 0, bottom: 0, left: 0 }
-    }
-
-    const inset = { top: 0, right: 0, bottom: 0, left: 0 }
-
-    const applyTop = (rect: DOMRect) => {
-      inset.top = Math.max(inset.top, rect.bottom - appRect.top + RENDER_SAFE_MARGIN)
-    }
-    const applyLeft = (rect: DOMRect) => {
-      inset.left = Math.max(inset.left, rect.right - appRect.left + RENDER_SAFE_MARGIN)
-    }
-    const applyRight = (rect: DOMRect) => {
-      inset.right = Math.max(inset.right, appRect.right - rect.left + RENDER_SAFE_MARGIN)
-    }
-    const applyBottom = (rect: DOMRect) => {
-      inset.bottom = Math.max(inset.bottom, appRect.bottom - rect.top + RENDER_SAFE_MARGIN)
-    }
-
-    const navRect = navRef.current?.getBoundingClientRect()
-    if (navRect) applyTop(navRect)
-
-    const sideRect = (activeTab === 'play' ? hudRef.current : editorPanelRef.current)?.getBoundingClientRect()
-    if (sideRect) {
-      if (sideRect.width >= appRect.width * 0.45) {
-        applyTop(sideRect)
-      } else {
-        applyLeft(sideRect)
-      }
-    }
-
-    const dagRect = activeTab === 'play' && showDevToggle && showDagValidator ? dagPanelRef.current?.getBoundingClientRect() : undefined
-    if (dagRect) {
-      if (dagRect.width >= appRect.width * 0.55) {
-        applyBottom(dagRect)
-      } else {
-        applyRight(dagRect)
-      }
-    }
-
-    return inset
-  }
-
-  const measureSceneViewportInset = (): NonNullable<Grid45RenderOptions['viewportInset']> => {
-    const inset = measureViewportInset()
-    return addHintViewportInset(canvasRef.current, inset, radialHintText)
-  }
+  const readSceneLayout = (): Grid45SceneLayout =>
+    createGrid45SceneLayout(
+      {
+        appRect: measureElementRect(appRef.current),
+        canvasRect: measureElementRect(canvasRef.current),
+        navRect: measureElementRect(navRef.current),
+        sideRect: measureElementRect(activeTab === 'play' ? hudRef.current : editorPanelRef.current),
+        dagRect: activeTab === 'play' && showDevToggle && showDagValidator ? measureElementRect(dagPanelRef.current) : null,
+      },
+      {
+        hintText: radialHintText,
+        safeMargin: RENDER_SAFE_MARGIN,
+      },
+    )
 
   const buildRenderOptions = (): Grid45RenderOptions => {
     const options: Grid45RenderOptions = {
-      viewportInset: measureSceneViewportInset(),
+      viewportInset: sceneLayout.viewportInset,
     }
 
     if (activeTab === 'play') {
@@ -1431,8 +1294,7 @@ export default function Grid45App() {
       : playtestSnapshot
         ? inventoryOrbitGroups(playtestInventoryKeys, playtestInventoryBoots, playtestInventoryChips)
         : []
-  void viewportVersion
-  const orbitFrame = orbitSnapshot ? orbitFrameForCanvas(canvasRef.current, measureSceneViewportInset()) : null
+  const orbitFrame = orbitSnapshot ? sceneLayout.frame : null
 
   useEffect(() => {
     editorWorldRef.current = editorWorld
@@ -1505,20 +1367,37 @@ export default function Grid45App() {
     }
   }, [editorBucketFillEnabled, editorPaintMode])
 
-  useEffect(() => {
-    const handleResize = () => {
-      setViewportVersion((value) => value + 1)
-    }
-
-    window.addEventListener('resize', handleResize)
-    return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
-
   useLayoutEffect(() => {
-    setViewportVersion((value) => value + 1)
-  }, [activeTab])
+    const measureLayout = () => {
+      setSceneLayout((current) => {
+        const next = readSceneLayout()
+        return sceneLayoutEquals(current, next) ? current : next
+      })
+    }
+
+    measureLayout()
+
+    const observer = new ResizeObserver(() => {
+      measureLayout()
+    })
+    const observedElements = [
+      appRef.current,
+      canvasRef.current,
+      navRef.current,
+      activeTab === 'play' ? hudRef.current : editorPanelRef.current,
+      activeTab === 'play' && showDevToggle && showDagValidator ? dagPanelRef.current : null,
+    ]
+
+    observedElements.forEach((element) => {
+      if (element) observer.observe(element)
+    })
+    window.addEventListener('resize', measureLayout)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measureLayout)
+    }
+  }, [activeTab, radialHintText, showDagValidator, showDevToggle])
 
   useEffect(() => {
     if (!overlayOpen) return
@@ -1613,7 +1492,7 @@ export default function Grid45App() {
   }, [activeTab, playSession])
 
   useEffect(() => {
-    if (activeTab !== 'editor' || playtestSession) setEditorDropFrame(null)
+    if (activeTab !== 'editor' || playtestSession) setEditorDropActive(false)
   }, [activeTab, playtestSession])
 
   useEffect(() => {
@@ -1793,16 +1672,14 @@ export default function Grid45App() {
     drawRef.current = render
     render()
 
-    window.addEventListener('resize', render)
     return () => {
       drawRef.current = null
-      window.removeEventListener('resize', render)
     }
-  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorHoverPreview, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
+  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorHoverPreview, editorSelectedCellId, playtestSnapshot, sceneLayout, showDagValidator, tileset])
 
   useEffect(() => {
     drawRef.current?.()
-  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorHoverPreview, editorSelectedCellId, playtestSnapshot, showDagValidator, tileset])
+  }, [activeTab, currentSceneState, editorCameraAngle, editorCameraCenter, editorHoverCellId, editorHoverPreview, editorSelectedCellId, playtestSnapshot, sceneLayout, showDagValidator, tileset])
 
   useEffect(() => {
     if (!showPlayEndOverlay) return
@@ -2021,7 +1898,7 @@ export default function Grid45App() {
     setEditorWorld((world) => paintEditorBucketFill(world, cellId, tool))
   }
 
-  const updateEditorCameraFromDrag = (deltaX: number, deltaY: number, rect: DOMRect) => {
+  const updateEditorCameraFromDrag = (deltaX: number, deltaY: number, rect: { width: number; height: number }) => {
     const diskRadius = Math.max(1, Math.min(rect.width, rect.height) * 0.45)
     const nextCenter = moveCameraInView(
       editorCameraCenterRef.current ?? editorCameraCenter,
@@ -2038,51 +1915,43 @@ export default function Grid45App() {
     setEditorSelectedCellId(nearestCellIdToPoint(editorWorld, nextCenter))
   }
 
-  const editorDiskFrameForCanvas = (): Grid45DiskFrame | null => {
-    const canvas = canvasRef.current
-    if (!canvas) return null
-    const rect = canvas.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return null
-    return computeGrid45DiskFrame(rect.width, rect.height, measureViewportInset())
-  }
-
   const handleEditorFileDragOver = (event: ReactDragEvent<HTMLCanvasElement>) => {
     if (activeTab !== 'editor' || playtestSession || !isFileDrag(event)) return
 
-    const frame = editorDiskFrameForCanvas()
-    const rect = canvasRef.current?.getBoundingClientRect()
+    const frame = sceneLayout.frame
+    const rect = sceneLayout.canvasRect
     if (!frame || !rect) return
 
     const insideDisk = pointInDisk(frame, event.clientX - rect.left, event.clientY - rect.top)
     if (!insideDisk) {
-      setEditorDropFrame(null)
+      setEditorDropActive(false)
       return
     }
 
     event.preventDefault()
     event.dataTransfer.dropEffect = 'copy'
-    setEditorDropFrame(frame)
+    setEditorDropActive(true)
   }
 
   const handleEditorFileDragLeave = (event: ReactDragEvent<HTMLCanvasElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-      setEditorDropFrame(null)
+      setEditorDropActive(false)
     }
   }
 
   const handleEditorFileDrop = (event: ReactDragEvent<HTMLCanvasElement>) => {
     if (activeTab !== 'editor' || playtestSession || !isFileDrag(event)) return
 
-    const frame = editorDiskFrameForCanvas()
-    const rect = canvasRef.current?.getBoundingClientRect()
+    const frame = sceneLayout.frame
+    const rect = sceneLayout.canvasRect
     const file = event.dataTransfer.files[0]
     if (!frame || !rect || !file) {
-      setEditorDropFrame(null)
+      setEditorDropActive(false)
       return
     }
 
     const insideDisk = pointInDisk(frame, event.clientX - rect.left, event.clientY - rect.top)
-    setEditorDropFrame(null)
+    setEditorDropActive(false)
     if (!insideDisk) return
 
     event.preventDefault()
@@ -2093,11 +1962,11 @@ export default function Grid45App() {
     if (activeTab !== 'editor' || playtestSession) return
 
     const canvas = canvasRef.current
-    if (!canvas) return
+    const rect = sceneLayout.canvasRect
+    if (!canvas || !rect) return
 
-    const rect = canvas.getBoundingClientRect()
     const cameraCenter = editorCameraCenterRef.current ?? editorCameraCenter
-    const viewportInset = measureViewportInset()
+    const viewportInset = sceneLayout.viewportInset
     const activeCellId = pickGrid45CellAtPoint(
       editorPreviewState,
       rect.width,
@@ -2331,15 +2200,15 @@ export default function Grid45App() {
           ))}
         </div>
       ) : null}
-      {editorDropFrame && activeTab === 'editor' && playtestSnapshot === null ? (
+      {editorDropActive && sceneLayout.frame && activeTab === 'editor' && playtestSnapshot === null ? (
         <div
           className="grid45DropHint"
           aria-hidden="true"
           style={{
-            left: editorDropFrame.centerX - editorDropFrame.diskRadius,
-            top: editorDropFrame.centerY - editorDropFrame.diskRadius,
-            width: editorDropFrame.diskRadius * 2,
-            height: editorDropFrame.diskRadius * 2,
+            left: sceneLayout.frame.centerX - sceneLayout.frame.diskRadius,
+            top: sceneLayout.frame.centerY - sceneLayout.frame.diskRadius,
+            width: sceneLayout.frame.diskRadius * 2,
+            height: sceneLayout.frame.diskRadius * 2,
           }}
         >
           <div className="grid45DropHintInner">Drop level JSON</div>

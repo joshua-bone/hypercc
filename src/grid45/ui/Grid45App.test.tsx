@@ -188,12 +188,11 @@ describe('Grid45App editor', () => {
   })
 
   it('shows a delta badge when bucket fill previews a terrain region', async () => {
-    const user = userEvent.setup()
     render(<Grid45App />)
 
-    await user.click(screen.getByRole('button', { name: 'Editor' }))
-    await user.click(screen.getByRole('button', { name: 'Wall' }))
-    await user.click(screen.getByRole('button', { name: 'Bucket Fill' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Editor' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Wall' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Bucket Fill' }))
 
     const canvas = document.querySelector('canvas')
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Expected editor canvas to exist.')
