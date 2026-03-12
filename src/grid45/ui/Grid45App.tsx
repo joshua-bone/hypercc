@@ -29,7 +29,6 @@ import {
   previewEditorBucketFill,
   previewEditorRegionPaint,
   rotateDirection,
-  rotateEditorMobAtCell,
   shrinkEditorWorld,
   type EditorPaintTool,
   type EditorRegionPaintMode,
@@ -1010,8 +1009,8 @@ export default function Grid45App() {
       toolLabel: editorToolLabelByTool[editorLeftTool],
       facing: editorLeftMobFacing,
       icon: iconForPaintTool(editorLeftTool, editorLeftMobFacing, paletteIcons, tileset),
-      onRotateLeft: () => setEditorLeftMobFacing((direction) => rotateDirection(direction, -1)),
-      onRotateRight: () => setEditorLeftMobFacing((direction) => rotateDirection(direction, 1)),
+      onRotateLeft: () => rotateEditorBrushFacing('left', -1),
+      onRotateRight: () => rotateEditorBrushFacing('left', 1),
     },
     {
       id: 'right',
@@ -1020,8 +1019,8 @@ export default function Grid45App() {
       toolLabel: editorToolLabelByTool[editorRightTool],
       facing: editorRightMobFacing,
       icon: iconForPaintTool(editorRightTool, editorRightMobFacing, paletteIcons, tileset),
-      onRotateLeft: () => setEditorRightMobFacing((direction) => rotateDirection(direction, -1)),
-      onRotateRight: () => setEditorRightMobFacing((direction) => rotateDirection(direction, 1)),
+      onRotateLeft: () => rotateEditorBrushFacing('right', -1),
+      onRotateRight: () => rotateEditorBrushFacing('right', 1),
     },
   ] as const
   const homeStatusMetrics = [
@@ -1080,6 +1079,7 @@ export default function Grid45App() {
                 'Left click a palette item to assign the left brush. Right click a palette item to assign the right brush.',
                 'Use Brush for direct painting and Bucket Fill for contiguous same-terrain regions.',
                 'Left or right drag paints with the assigned brush.',
+                'Comma and Period (< and >) rotate the current mob brush facing.',
               ],
             },
             {
@@ -1165,10 +1165,31 @@ export default function Grid45App() {
     return nearestCellIdToPoint(world, fallbackPoint)
   }
 
-  const rotateSelectedEditorMob = (delta: -1 | 1) => {
-    if (!editorWorld.initialMonsters.some((monster) => monster.cellId === editorSelectedCellId)) return
-    pushEditorUndo()
-    setEditorWorld((world) => rotateEditorMobAtCell(world, editorSelectedCellId, delta))
+  function rotateEditorBrushFacing(paintButton: 'left' | 'right', delta: -1 | 1) {
+    if (paintButton === 'left') {
+      if (!isMobTool(editorLeftTool)) return
+      setEditorLeftMobFacing((direction) => rotateDirection(direction, delta))
+      return
+    }
+
+    if (!isMobTool(editorRightTool)) return
+    setEditorRightMobFacing((direction) => rotateDirection(direction, delta))
+  }
+
+  function rotateActiveEditorBrushes(delta: -1 | 1) {
+    let rotated = false
+
+    if (isMobTool(editorLeftTool)) {
+      rotated = true
+      setEditorLeftMobFacing((direction) => rotateDirection(direction, delta))
+    }
+
+    if (isMobTool(editorRightTool)) {
+      rotated = true
+      setEditorRightMobFacing((direction) => rotateDirection(direction, delta))
+    }
+
+    return rotated
   }
 
   const assignEditorTool = (paintButton: 'left' | 'right', tool: EditorPaintTool) => {
@@ -1626,11 +1647,11 @@ export default function Grid45App() {
         event.preventDefault()
         undoEditor()
       } else if (rotationDelta === -1) {
+        if (!rotateActiveEditorBrushes(-1)) return
         event.preventDefault()
-        rotateSelectedEditorMob(-1)
       } else if (rotationDelta === 1) {
+        if (!rotateActiveEditorBrushes(1)) return
         event.preventDefault()
-        rotateSelectedEditorMob(1)
       } else if (event.key === 'q' || event.key === 'Q') {
         event.preventDefault()
         setEditorRotateIntent(-1)
@@ -1655,7 +1676,7 @@ export default function Grid45App() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [activeTab, overlayOpen, playSession, playtestSession, playtestSnapshot, rotateSelectedEditorMob, showPlayEndOverlay, stepModeEnabled, undoEditor])
+  }, [activeTab, editorLeftTool, editorRightTool, overlayOpen, playSession, playtestSession, playtestSnapshot, showPlayEndOverlay, stepModeEnabled, undoEditor])
 
   useEffect(() => {
     const canvas = canvasRef.current

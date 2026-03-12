@@ -942,7 +942,7 @@ body {
 }
 
 .grid45PaletteCompact {
-  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
   gap: 4px;
 }
 
@@ -965,9 +965,9 @@ body {
   position: relative;
   align-items: center;
   justify-content: center;
-  min-height: 48px;
-  padding: 6px;
-  border-radius: 9px;
+  min-height: 56px;
+  padding: 4px;
+  border-radius: 10px;
   font-size: 11px;
   aspect-ratio: 1;
 }
@@ -990,8 +990,8 @@ body {
 
 .grid45PaletteCompact .grid45PaletteAssignments {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: 4px;
+  bottom: 4px;
   gap: 2px;
   margin-left: 0;
 }
@@ -1033,8 +1033,8 @@ body {
 }
 
 .grid45PaletteCompact .grid45PaletteIcon {
-  width: 18px;
-  height: 18px;
+  width: 34px;
+  height: 34px;
 }
 
 .grid45BrushGrid {

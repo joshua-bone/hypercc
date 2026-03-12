@@ -246,6 +246,62 @@ describe('Grid45App editor', () => {
     })
   })
 
+  it('rotates the mob brush facing with > without rotating a placed mob', async () => {
+    const user = userEvent.setup()
+    render(<Grid45App />)
+
+    await user.click(screen.getByRole('button', { name: 'Editor' }))
+    await user.click(screen.getByRole('button', { name: 'Glider' }))
+
+    const canvas = document.querySelector('canvas')
+    if (!(canvas instanceof HTMLCanvasElement)) throw new Error('Expected editor canvas to exist.')
+    const initialMonsterCount = Number.parseInt(editorStatValue('Monsters'), 10)
+
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      buttons: 1,
+      clientX: 120,
+      clientY: 120,
+      pointerId: 1,
+    })
+    fireEvent.pointerUp(canvas, {
+      button: 0,
+      buttons: 0,
+      clientX: 120,
+      clientY: 120,
+      pointerId: 1,
+    })
+
+    await waitFor(() => {
+      expect(Number.parseInt(editorStatValue('Monsters'), 10)).toBe(initialMonsterCount + 1)
+    })
+
+    const renderCallsBeforeRotate = vi.mocked(renderGrid45Scene).mock.calls
+    const stateBeforeRotate = renderCallsBeforeRotate[renderCallsBeforeRotate.length - 1]?.[1]
+    const placedMonsterBeforeRotate = stateBeforeRotate?.world.initialMonsters.find((monster) => monster.cellId === 0)
+    const placedMonsterFacing = placedMonsterBeforeRotate?.facing
+    expect(placedMonsterFacing).toBe('north')
+
+    fireEvent.keyDown(window, {
+      key: '>',
+      code: 'Period',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+
+    const leftBrushStrip = screen.getByText('Left').closest('.grid45BrushStrip')
+    const leftBrushFacing = leftBrushStrip?.querySelector('.grid45BrushFacing')
+    await waitFor(() => {
+      expect(leftBrushFacing).toHaveTextContent('east')
+    })
+
+    const renderCallsAfterRotate = vi.mocked(renderGrid45Scene).mock.calls
+    const stateAfterRotate = renderCallsAfterRotate[renderCallsAfterRotate.length - 1]?.[1]
+    const placedMonsterAfterRotate = stateAfterRotate?.world.initialMonsters.find((monster) => monster.cellId === 0)
+    expect(placedMonsterAfterRotate?.facing).toBe(placedMonsterFacing)
+  })
+
   it('realigns the inventory orbit after switching from editor back to home', async () => {
     const user = userEvent.setup()
     render(<Grid45App />)
