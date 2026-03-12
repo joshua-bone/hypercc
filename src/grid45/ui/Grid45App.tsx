@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { createGrid45Session, type Grid45Session } from '../application/createGrid45Session'
 import { computeGrid45DiskFrame, renderGrid45Scene, resizeCanvasToDisplaySize, pickGrid45CellAtPoint, type Grid45DiskFrame, type Grid45RenderOptions } from '../adapters/canvasRenderer'
 import { createIntervalClock } from '../adapters/intervalClock'
@@ -1515,6 +1515,10 @@ export default function Grid45App() {
       window.removeEventListener('resize', handleResize)
     }
   }, [])
+
+  useLayoutEffect(() => {
+    setViewportVersion((value) => value + 1)
+  }, [activeTab])
 
   useEffect(() => {
     if (!overlayOpen) return

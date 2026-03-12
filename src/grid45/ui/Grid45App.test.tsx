@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { directions } from '../domain/directions'
 import { currentCellKind } from '../domain/model'
 import type { Grid45Tileset } from '../adapters/spriteAtlas'
 
 let pickedCellId = 0
+let boundingRectSpy: { mockRestore: () => void } | null = null
 
 function createSprite(): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
@@ -118,6 +119,20 @@ vi.mock('../adapters/canvasRenderer', async () => {
 import Grid45App from './Grid45App'
 import { renderGrid45Scene } from '../adapters/canvasRenderer'
 
+function createRect(left: number, top: number, width: number, height: number): DOMRect {
+  return {
+    x: left,
+    y: top,
+    width,
+    height,
+    top,
+    right: left + width,
+    bottom: top + height,
+    left,
+    toJSON: () => ({}),
+  } as DOMRect
+}
+
 function editorStatValue(label: string): string {
   const statLabel = screen.getByText(label)
   const statItem = statLabel.closest('.grid45StatItem')
@@ -135,6 +150,27 @@ describe('Grid45App editor', () => {
   beforeEach(() => {
     pickedCellId = 0
     vi.mocked(renderGrid45Scene).mockClear()
+    boundingRectSpy?.mockRestore()
+    boundingRectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function mockRect(this: HTMLElement) {
+      if (this instanceof HTMLCanvasElement || this.classList.contains('grid45App')) {
+        return createRect(0, 0, 1200, 800)
+      }
+      if (this.classList.contains('grid45Nav')) {
+        return createRect(16, 16, 1168, 56)
+      }
+      if (this.classList.contains('grid45Hud')) {
+        return createRect(16, 92, 320, 280)
+      }
+      if (this.classList.contains('grid45EditorPanel')) {
+        return createRect(16, 92, 412, 620)
+      }
+      return createRect(0, 0, 0, 0)
+    })
+  })
+
+  afterEach(() => {
+    boundingRectSpy?.mockRestore()
+    boundingRectSpy = null
   })
 
   it('keeps typing directed into focused metadata fields', async () => {
@@ -208,6 +244,28 @@ describe('Grid45App editor', () => {
           .mocked(renderGrid45Scene)
           .mock.calls.some((call) => call[5]?.transition?.progress === 1 / 4),
       ).toBe(true)
+    })
+  })
+
+  it('realigns the inventory orbit after switching from editor back to home', async () => {
+    const user = userEvent.setup()
+    render(<Grid45App />)
+
+    await waitFor(() => {
+      expect(document.querySelector('.grid45OrbitSlot')).toBeTruthy()
+    })
+
+    const initialSlot = document.querySelector('.grid45OrbitSlot')
+    if (!(initialSlot instanceof HTMLElement)) throw new Error('Expected an inventory orbit slot on the home tab.')
+    const initialLeft = Number.parseFloat(initialSlot.style.left)
+
+    await user.click(screen.getByRole('button', { name: 'Editor' }))
+    await user.click(screen.getByRole('button', { name: 'Home' }))
+
+    await waitFor(() => {
+      const returnedSlot = document.querySelector('.grid45OrbitSlot')
+      expect(returnedSlot).toBeInstanceOf(HTMLElement)
+      expect(Number.parseFloat((returnedSlot as HTMLElement).style.left)).toBeCloseTo(initialLeft, 1)
     })
   })
 
