@@ -5,6 +5,7 @@ import {
   createEmptyKeyInventory,
   currentCellKind,
   doorColorFromFeature,
+  isPlayerEnterableCellKind,
   keyColorFromFeature,
   type CellKind,
   type Direction,
@@ -123,7 +124,7 @@ function resolvedCellKind(state: Pick<GameState, 'world' | 'togglePhase' | 'terr
 }
 
 function canPlayerEnterTerrain(kind: CellKind): boolean {
-  return kind === 'floor' || kind === 'toggle-floor' || kind === 'water' || kind === 'fire' || kind === 'dirt' || kind === 'gravel'
+  return isPlayerEnterableCellKind(kind, false)
 }
 
 function canMonsterEnterTerrain(kind: CellKind, monsterKind: MonsterKind): boolean {
@@ -132,6 +133,12 @@ function canMonsterEnterTerrain(kind: CellKind, monsterKind: MonsterKind): boole
   if (kind === 'fire') return monsterKind === 'fireball'
   if (kind === 'gravel') return monsterKind === 'dirt-block'
   return false
+}
+
+function applyEnteredTerrainEffect(terrainOverrides: Map<number, CellKind>, cellId: number, enteredTerrain: CellKind): Map<number, CellKind> {
+  if (enteredTerrain === 'dirt') return overrideTerrainKind(terrainOverrides, cellId, 'floor')
+  if (enteredTerrain === 'popup-wall') return overrideTerrainKind(terrainOverrides, cellId, 'wall')
+  return terrainOverrides
 }
 
 function canEnterCell(state: GameState, targetId: number): boolean {
@@ -566,9 +573,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
           if (targetCell.feature === 'tank-button') {
             monsters = reverseTankMonsters(monsters)
           }
-          if (enteredTerrain === 'dirt') {
-            terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
-          }
+          terrainOverrides = applyEnteredTerrainEffect(terrainOverrides, targetId, enteredTerrain)
           if ((enteredTerrain === 'water' && !hasFlippers) || (enteredTerrain === 'fire' && !hasFireBoots)) {
             playerDead = true
             recoveryTicks = 0
@@ -637,9 +642,7 @@ export function advanceGame(state: GameState, intent: MoveIntent): GameState {
         if (targetCell.feature === 'tank-button') {
           monsters = reverseTankMonsters(monsters)
         }
-        if (enteredTerrain === 'dirt') {
-          terrainOverrides = overrideTerrainKind(terrainOverrides, targetId, 'floor')
-        }
+        terrainOverrides = applyEnteredTerrainEffect(terrainOverrides, targetId, enteredTerrain)
         if ((enteredTerrain === 'water' && !hasFlippers) || (enteredTerrain === 'fire' && !hasFireBoots)) {
           playerDead = true
           recoveryTicks = 0

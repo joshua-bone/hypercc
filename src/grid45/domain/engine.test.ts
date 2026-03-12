@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { directions } from './directions'
 import { advanceGame, createInitialGameState } from './engine'
+import { currentCellKind } from './model'
 import { createGrid45World } from './world'
 import { createBlankFloorEditorWorld } from '../ui/editorHelpers'
 
@@ -107,5 +108,47 @@ describe('engine', () => {
     expect(afterReturn).toBeDefined()
     expect(afterReturn?.levelComplete).toBe(false)
     expect(afterReturn?.lastOutcome).toBe('moved')
+  })
+
+  it('lets the player enter a pop-up wall and turns it into a wall beneath them', () => {
+    const { world, moveDirection, targetCellId } = createBlankTraversalWorld()
+    world.cells[targetCellId].kind = 'popup-wall'
+
+    const nextState = advanceGame(createInitialGameState(world), moveDirection)
+
+    expect(nextState.playerCellId).toBe(targetCellId)
+    expect(nextState.lastOutcome).toBe('moved')
+    expect(nextState.playerDead).toBe(false)
+    expect(nextState.terrainOverrides.get(targetCellId)).toBe('wall')
+    expect(currentCellKind(world.cells[targetCellId].kind, nextState.togglePhase, nextState.terrainOverrides.get(targetCellId))).toBe('wall')
+  })
+
+  it('prevents monsters from entering a pop-up wall after the player triggers it', () => {
+    const { world, moveDirection, targetCellId } = createBlankTraversalWorld()
+    world.cells[targetCellId].kind = 'popup-wall'
+
+    const monsterCellId = directions
+      .map((direction) => world.cells[targetCellId].exits[direction])
+      .find((cellId): cellId is number => cellId !== null && cellId !== world.startCellId && world.cells[cellId].kind !== 'void')
+
+    if (monsterCellId === undefined) throw new Error('Expected an extra neighbor around the pop-up wall cell.')
+
+    world.initialMonsters = [
+      {
+        id: 0,
+        kind: 'teeth',
+        cellId: monsterCellId,
+        facing: 'north',
+        recoveryTicks: 0,
+      },
+    ]
+
+    const afterEnter = advanceGame(createInitialGameState(world), moveDirection)
+    const afterMonsterAdvance = advanceGame(afterEnter, 'stay')
+
+    expect(afterMonsterAdvance.playerCellId).toBe(targetCellId)
+    expect(afterMonsterAdvance.playerDead).toBe(false)
+    expect(afterMonsterAdvance.terrainOverrides.get(targetCellId)).toBe('wall')
+    expect(afterMonsterAdvance.monsters.some((monster) => monster.cellId === targetCellId)).toBe(false)
   })
 })

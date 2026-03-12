@@ -72,6 +72,7 @@ const worldSizeLabels: Record<WorldSize, string> = {
 const editorPalette: Array<{ tool: EditorPaintTool; label: string }> = [
   { tool: 'floor', label: 'Floor' },
   { tool: 'wall', label: 'Wall' },
+  { tool: 'popup-wall', label: 'Pop-up Wall' },
   { tool: 'water', label: 'Water' },
   { tool: 'fire', label: 'Fire' },
   { tool: 'dirt', label: 'Dirt' },
@@ -218,6 +219,7 @@ function createPaletteIconMap(tileset: Grid45Tileset, mobFacing: Direction): Pal
   return {
     floor: makePaletteIcon(tileset.tiles.floor),
     wall: makePaletteIcon(tileset.tiles.wall),
+    'popup-wall': makePaletteIcon(tileset.tiles['popup-wall']),
     water: makePaletteIcon(tileset.tiles.water),
     fire: makePaletteIcon(tileset.tiles.fire),
     dirt: makePaletteIcon(tileset.tiles.dirt),

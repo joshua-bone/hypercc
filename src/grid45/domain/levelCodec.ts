@@ -117,6 +117,7 @@ function parseOfficialCellData(value: unknown, cellCount: number, cellId: number
     if (
       terrainValue !== 'floor' &&
       terrainValue !== 'wall' &&
+      terrainValue !== 'popup-wall' &&
       terrainValue !== 'toggle-floor' &&
       terrainValue !== 'toggle-wall' &&
       terrainValue !== 'water' &&

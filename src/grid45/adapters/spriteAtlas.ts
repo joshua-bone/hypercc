@@ -131,6 +131,7 @@ export async function loadGrid45Tileset(src = DEFAULT_TILESET_URL): Promise<Grid
     tiles: {
       floor: drawTile(image, { col: 1, row: 1 }),
       wall: drawTile(image, { col: 1, row: 2 }),
+      'popup-wall': drawTile(image, { col: 3, row: 15 }),
       'toggle-floor': drawTile(image, { col: 3, row: 7 }),
       'toggle-wall': drawTile(image, { col: 3, row: 6 }),
       water: drawTile(image, { col: 1, row: 4 }),

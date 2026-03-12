@@ -21,6 +21,7 @@ function createTileset(): Grid45Tileset {
     tiles: {
       floor: createSprite(),
       wall: createSprite(),
+      'popup-wall': createSprite(),
       'toggle-floor': createSprite(),
       'toggle-wall': createSprite(),
       water: createSprite(),
@@ -226,7 +227,7 @@ describe('Grid45App editor', () => {
       const neighborId = initialState.world.cells[initialState.playerCellId].exits[direction]
       if (neighborId === null) return false
       const kind = currentCellKind(initialState.world.cells[neighborId].kind, initialState.togglePhase)
-      return kind === 'floor' || kind === 'toggle-floor' || kind === 'dirt' || kind === 'gravel'
+      return kind === 'floor' || kind === 'toggle-floor' || kind === 'popup-wall' || kind === 'dirt' || kind === 'gravel'
     })
 
     if (!moveDirection) throw new Error('Expected a passable neighboring cell from the start position.')

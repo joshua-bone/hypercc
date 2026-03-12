@@ -510,6 +510,7 @@ function fillCell(
 
 function baseFillForCell(kind: MazeCell['kind']): string {
   if (kind === 'floor' || kind === 'toggle-floor') return '#bebebe'
+  if (kind === 'popup-wall') return '#8e8a64'
   if (kind === 'water') return '#5d91c5'
   if (kind === 'fire') return '#cb7650'
   if (kind === 'dirt') return '#8f6c4a'
@@ -908,6 +909,8 @@ export function renderGrid45Scene(
         ? baseFillForCell(effectiveKind)
         : effectiveKind === 'floor' || effectiveKind === 'toggle-floor'
           ? '#d3d7de'
+          : effectiveKind === 'popup-wall'
+            ? '#a39c74'
           : effectiveKind === 'water'
             ? '#6d9bcb'
             : effectiveKind === 'fire'

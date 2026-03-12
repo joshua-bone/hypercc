@@ -2,7 +2,7 @@ import type { Vec2 } from '../../hyper/vec2'
 
 export type Direction = 'north' | 'east' | 'south' | 'west'
 export type MoveIntent = Direction | 'stay'
-export type CellKind = 'floor' | 'wall' | 'toggle-floor' | 'toggle-wall' | 'water' | 'fire' | 'dirt' | 'gravel' | 'void'
+export type CellKind = 'floor' | 'wall' | 'popup-wall' | 'toggle-floor' | 'toggle-wall' | 'water' | 'fire' | 'dirt' | 'gravel' | 'void'
 export const keyColors = ['blue', 'red', 'green', 'yellow'] as const
 export type KeyColor = (typeof keyColors)[number]
 export type CellFeature =
@@ -167,4 +167,17 @@ export function currentCellKind(kind: CellKind, togglePhase: boolean, terrainOve
 export function isPassableCellKind(kind: CellKind, togglePhase: boolean, terrainOverride?: CellKind): boolean {
   const effectiveKind = currentCellKind(kind, togglePhase, terrainOverride)
   return effectiveKind === 'floor' || effectiveKind === 'toggle-floor'
+}
+
+export function isPlayerEnterableCellKind(kind: CellKind, togglePhase: boolean, terrainOverride?: CellKind): boolean {
+  const effectiveKind = currentCellKind(kind, togglePhase, terrainOverride)
+  return (
+    effectiveKind === 'floor' ||
+    effectiveKind === 'toggle-floor' ||
+    effectiveKind === 'popup-wall' ||
+    effectiveKind === 'water' ||
+    effectiveKind === 'fire' ||
+    effectiveKind === 'dirt' ||
+    effectiveKind === 'gravel'
+  )
 }

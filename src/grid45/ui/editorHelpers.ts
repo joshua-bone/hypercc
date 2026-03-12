@@ -2,7 +2,7 @@ import { hyperbolicDistance } from '../../hyper/poincare'
 import type { Vec2 } from '../../hyper/vec2'
 import { directionTowardNeighbor, grid45CellGeometryKey, reflectGrid45CellGeometry } from '../domain/cellGeometry'
 import { mazeWorldToOfficialLevel, stringifyOfficialLevel } from '../domain/levelCodec'
-import { currentCellKind, isPassableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeCell, type MazeWorld, type MonsterKind } from '../domain/model'
+import { currentCellKind, isPassableCellKind, isPlayerEnterableCellKind, type AreaDag, type CellFeature, type CellKind, type Direction, type MazeCell, type MazeWorld, type MonsterKind } from '../domain/model'
 import { directions } from '../domain/directions'
 
 type PaintableCellKind = Exclude<CellKind, 'void'>
@@ -53,8 +53,7 @@ function firstMapCellId(world: MazeWorld): number {
 function firstFloorCellId(world: MazeWorld): number {
   return world.cells.find((cell) => {
     if (!isMapCell(cell)) return false
-    const kind = currentCellKind(cell.kind, false)
-    return kind === 'floor' || kind === 'toggle-floor' || kind === 'dirt' || kind === 'gravel'
+    return isPlayerEnterableCellKind(cell.kind, false)
   })?.id ?? 0
 }
 
@@ -66,6 +65,7 @@ function isBucketFillTool(tool: EditorPaintTool): tool is PaintableCellKind {
   return (
     tool === 'floor' ||
     tool === 'wall' ||
+    tool === 'popup-wall' ||
     tool === 'toggle-floor' ||
     tool === 'toggle-wall' ||
     tool === 'water' ||
@@ -388,17 +388,13 @@ export function normalizeEditorWorld(world: MazeWorld): MazeWorld {
     }))
 
   const startKind = currentCellKind(nextWorld.cells[nextWorld.startCellId]?.kind ?? 'wall', false)
-  const startPassable = startKind === 'floor' || startKind === 'toggle-floor' || startKind === 'dirt' || startKind === 'gravel'
+  const startPassable = isPlayerEnterableCellKind(startKind, false)
   if (!startPassable || hasMonsterAtCell(nextWorld, nextWorld.startCellId)) {
     nextWorld.startCellId = firstFloorCellId(nextWorld)
   }
 
   const normalizedStartKind = currentCellKind(nextWorld.cells[nextWorld.startCellId]?.kind ?? 'void', false)
-  const normalizedStartPassable =
-    normalizedStartKind === 'floor' ||
-    normalizedStartKind === 'toggle-floor' ||
-    normalizedStartKind === 'dirt' ||
-    normalizedStartKind === 'gravel'
+  const normalizedStartPassable = isPlayerEnterableCellKind(normalizedStartKind, false)
   if (!isMapCell(nextWorld.cells[nextWorld.startCellId] ?? { kind: 'void' }) || !normalizedStartPassable) {
     const fallbackCellId = firstMapCellId(nextWorld)
     nextWorld.cells[fallbackCellId].kind = 'floor'
@@ -430,6 +426,7 @@ export function paintEditorWorld(world: MazeWorld, cellId: number, tool: EditorP
 
   if (
     tool === 'wall' ||
+    tool === 'popup-wall' ||
     tool === 'toggle-wall' ||
     tool === 'water' ||
     tool === 'fire' ||

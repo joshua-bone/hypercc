@@ -80,6 +80,15 @@ describe('editorHelpers', () => {
     expect(world.exitCellId).toBe(-1)
   })
 
+  it('keeps a pop-up wall as a valid player start terrain', () => {
+    const world = createEditorWorld()
+
+    const painted = paintEditorWorld(world, world.startCellId, 'popup-wall', 'north')
+
+    expect(painted.startCellId).toBe(world.startCellId)
+    expect(painted.cells[painted.startCellId].kind).toBe('popup-wall')
+  })
+
   it('previews and paints region border expansion into only non-map cells', () => {
     let world = createEditorWorld()
     const anchorCellId = collectEditorBoundaryCellIds(world)[0]

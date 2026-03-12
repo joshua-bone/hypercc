@@ -35,13 +35,18 @@ describe('levelCodec', () => {
 
   it('round-trips title, author, hint, and sparse authored cells through the official format', () => {
     let world = createEditorWorld()
-    const hintCellId = directions
+    const adjacentCellIds = directions
       .map((direction) => world.cells[world.startCellId].exits[direction])
-      .find((cellId): cellId is number => cellId !== null && world.cells[cellId].kind !== 'void')
+      .filter((cellId): cellId is number => cellId !== null && world.cells[cellId].kind !== 'void')
+
+    const hintCellId = adjacentCellIds[0]
+    const popupWallCellId = adjacentCellIds[1]
 
     if (hintCellId === undefined) throw new Error('Expected a neighboring map cell to place a hint.')
+    if (popupWallCellId === undefined) throw new Error('Expected a second neighboring map cell to place a pop-up wall.')
 
     world = paintEditorWorld(world, hintCellId, 'hint', 'north')
+    world = paintEditorWorld(world, popupWallCellId, 'popup-wall', 'north')
     world = {
       ...world,
       title: 'Round Trip Level',
@@ -58,10 +63,12 @@ describe('levelCodec', () => {
     expect(officialLevel.author).toBe('Test Author')
     expect(officialLevel.hint).toBe('Stay on the bright path.')
     expect(officialLevel.cells).toHaveLength(countEditorMapCells(world))
+    expect(officialLevel.cells.some((cell) => cell[4]?.terrain === 'popup-wall')).toBe(true)
     expect(reloaded.title).toBe('Round Trip Level')
     expect(reloaded.author).toBe('Test Author')
     expect(reloaded.hint).toBe('Stay on the bright path.')
     expect(reloaded.cells.every((cell) => cell.kind !== 'void')).toBe(true)
     expect(reloaded.cells.some((cell) => cell.feature === 'hint')).toBe(true)
+    expect(reloaded.cells.some((cell) => cell.kind === 'popup-wall')).toBe(true)
   })
 })
